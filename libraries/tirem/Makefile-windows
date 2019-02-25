@@ -1,0 +1,19 @@
+
+include ../libraries/tirem/Makefile-common
+
+ADDON_OPTIONS   = $(ADDON_OPTIONS) $(TIREM_OPTIONS)
+ADDON_SRCS      = $(ADDON_SRCS) $(TIREM_SRCS)
+ADDON_INCLUDES  = $(ADDON_INCLUDES) $(TIREM_INCLUDES)
+
+INCLUDE_DIRS = \
+-I../include \
+$(ADDON_INCLUDES)
+
+# /Ox is the same as /Ogityb1 /Gs
+# /Og causes tirem to seg fault
+../libraries/tirem/src/prop_tirem.obj: ../libraries/tirem/src/prop_tirem.cpp
+	$(CPP) /EHsc /MT /nologo /DPARALLEL \
+	$(INCLUDE_DIRS) \
+	$(DEBUG) \
+	/Ob2 /Oity /Gs \
+	$(ADDON_OPTIONS) /Fo../libraries/tirem/src/prop_tirem.obj /c ../libraries/tirem/src/prop_tirem.cpp

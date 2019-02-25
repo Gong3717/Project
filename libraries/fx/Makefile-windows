@@ -1,0 +1,7 @@
+
+include ../libraries/fx/Makefile-common
+
+ADDON_OPTIONS   = $(ADDON_OPTIONS) $(FX_OPTIONS)
+ADDON_SRCS      = $(ADDON_SRCS) $(FX_SRCS)
+ADDON_INCLUDES  = $(ADDON_INCLUDES) $(FX_INCLUDES)
+

@@ -1,0 +1,15 @@
+TIREM_OPTIONS = -DTIREM_LIB
+
+TIREM_DIR = ../libraries/tirem/src
+
+#
+# common sources
+#
+TIREM_SRCS = \
+$(TIREM_DIR)/prop_tirem.cpp
+
+TIREM_INCLUDES = \
+-I$(TIREM_DIR)
+
+TIREM_LIBRARIES = \
+-L$(TIREM_DIR) -ltirem3

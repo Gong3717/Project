@@ -1,0 +1,21 @@
+FX_OPTIONS = -DFX_LIB
+
+FX_DIR = ../libraries/fx
+FX_SRCDIR = ../libraries/fx/src
+
+
+FX_SRCS = \
+$(FX_SRCDIR)/phy_fx.cpp \
+$(FX_SRCDIR)/layer3_fx.cpp \
+$(FX_SRCDIR)/layer2_fx_smac.cpp \
+$(FX_SRCDIR)/layer2_fx_slc.cpp \
+$(FX_SRCDIR)/layer2_fx_sac.cpp \
+$(FX_SRCDIR)/layer2_fx.cpp \
+$(FX_SRCDIR)/fx_rrc_config.cpp \
+$(FX_SRCDIR)/epc_fx.cpp \
+$(FX_SRCDIR)/epc_fx_app.cpp \
+
+
+
+FX_INCLUDES = \
+-I$(FX_SRCDIR)

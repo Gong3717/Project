@@ -1,0 +1,11 @@
+*
+
+!*/
+
+!*.cpp
+!*.h
+!*.prt
+!*.gitignore
+
+!Makefile-common
+!Makefile-windows
