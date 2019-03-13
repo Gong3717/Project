@@ -13,6 +13,7 @@
 #include "epc_fx.h"
 #include "epc_fx_app.h"//Added by WLH
 #include "phy_lte.h"   //gss xd
+#include "epc_Lte.h"  //gss xd
 
 
 
@@ -82,8 +83,10 @@ void FxLayer3Init(Node* node,
 	// 信关站处理切换文件
 	FxStationType stationType =
 		FxLayer2GetStationType(node, interfaceIndex);
-	if (stationType == FX_STATION_TYPE_YH)
+	if (stationType == FX_STATION_TYPE_YH) {
 		Layer3FxInitHandoverSchedule(node, interfaceIndex, nodeInput);
+		//Layer3FxInitXdHandover(node, interfaceIndex);
+	}
 
 }
 
@@ -143,6 +146,11 @@ void Layer3FxAddRoute(Node * node, int interfaceIndex, const fxRnti & oppositeRn
 		// 用户站添加默认路由
 		destAddr = 0;   // default route
 		destMask = 0;   // default route
+		//destAddr =
+			MAPPING_GetInterfaceAddressForInterface(
+				node, oppositeRnti.nodeId, oppositeRnti.interfaceIndex);  //YH - XG
+		//destAddr = 3187672578;   //YH - CN
+		//destMask = ANY_ADDRESS;
 		nextHop =
 			MAPPING_GetInterfaceAddressForInterface(
 				node, oppositeRnti.nodeId, oppositeRnti.interfaceIndex);
@@ -377,6 +385,18 @@ void Layer3FxProcessEvent(Node * node, int interfaceIndex, Message * msg)
 		scheduleEntry++;
 		if (scheduleEntry != layer3Data->handoverSchedule->end())
 			Layer3FxSetTimerForRrc(node, interfaceIndex, MSG_RRC_FX_HandoverScheduleTimerExpired, scheduleEntry->first - getSimTime(node));
+	}
+	case MSG_RRC_FX_XdHandoverScheduleTimerExpired: 
+	{
+		PhyFxTxInfo* txInfo = (PhyFxTxInfo*)MESSAGE_ReturnInfo(msg, INFO_TYPE_FxPhyTxInfo);
+		Layer3DataFx* layer3Data = FxLayer2GetLayer3DataFx(node, interfaceIndex);
+		// Add to ConnectedList
+		// 把当前和信关站的connection设为在切换中
+		assert(layer3Data->connectionInfoMap.size() == 1);
+		FxConnectionInfo* connection = &(layer3Data->connectionInfoMap.begin()->second);
+		//connection->state = LAYER3_FX_CONNECTION_XDHANDOVER;
+		//Layer3XdHandOverDecision(node, interfaceIndex, txInfo->destRNTI);
+		Layer3FxSetTimerForRrc(node, interfaceIndex, MSG_RRC_FX_XdHandoverScheduleTimerExpired, RRC_FX_DEFAULT_XD_HANDOVER_TIME);
 	}
 	default:
 		break;
@@ -1088,29 +1108,14 @@ void Layer3FxInitHandoverSchedule(Node * node, UInt32 interfaceIndex, const Node
 
 }
 
-//gss
+//gss xd
 void Layer3XdHandOverDecision(
 	Node *node,
 	UInt32 interfaceIndex,
-	const LteRnti& ueRnti,
-	PhyDataFx* phy_sphy,
-	PhyDataLte* phyLte,
-	LteRnti* sgwmmeRnti,
-	fxRnti* targetRnti)
+	const fxRnti& targetRnti) 
 {
-	// HO decision
-	if (phy_sphy->txPower_dBm > phyLte->maxTxPower_dBm) {
-		Layer3FxAddRoute(node, interfaceIndex, *targetRnti);
-	}
-	if (*targetRnti != FX_INVALID_RNTI)
-	{
-		// the UE dosen't hand over
-		return;
-	}
-	// send HandoverRequest to target XG
-	Layer2DataLte* layer2 = LteLayer2GetLayer2DataLte(node, interfaceIndex);
-	XdHandoverParticipator xdhoParticipator(ueRnti,layer2->myRnti, *sgwmmeRnti,*targetRnti);
-	EpcXdAppSend_HandoverRequried(node, interfaceIndex, xdhoParticipator);
+	Layer3FxAddRoute(node, interfaceIndex, targetRnti);
+	Layer3FxSetTimerForRrc(node, interfaceIndex, MSG_RRC_FX_XdHandoverScheduleTimerExpired, RRC_FX_DEFAULT_XD_HANDOVER_TIME);
 }
 
 //gss xd
@@ -1120,32 +1125,28 @@ void Layer3FxReceiveXdHoReq(
 	const XdHandoverParticipator& xdhoParticipator)
 {
 	// send HandoverRequest to tgt XG
-	EpcXdAppSend_HandoverRequest(node, interfaceIndex, xdhoParticipator);
-
+	EpcXdAppSend_HandoverRequestAck(node, interfaceIndex, xdhoParticipator);
 	// update stats
-	//EpcFxData* epc = EpcFxGetEpcData(node);
-	//epc->statData.numHandoverRequestReceived++;
+	EpcData* epc = EpcLteGetEpcData(node);
+	epc->statData.numXdHandoverRequestReceived++;
+	cout << "node" << node->nodeId << " : receive xd handover request at " << getSimTime(node) / (double)SECOND << " second." << endl;
 }
+
 
 //gss xd
 void Layer3FxReceiveXdHoReqAck(
 	Node *node,
 	UInt32 interfaceIndex,
-	const XdHandoverParticipator& xdhoParticipator,
-	const FXRrcConnectionReconfiguration& reconf)
-{
-	EpcXdAppSend_HandoverRequestAck(node, interfaceIndex, xdhoParticipator, reconf);
-
-}
-
-//gss xd
-void Layer3FxReceiveXdHoCom(
-	Node *node,
-	UInt32 interfaceIndex,
 	const XdHandoverParticipator& xdhoParticipator)
 {
 	EpcXdAppSend_HandoverCommand(node, interfaceIndex, xdhoParticipator);
+	// update stats
+	EpcData* epc = EpcLteGetEpcData(node);
+	epc->statData.numXdHandoverRequestAckReceived++;
+	cout << "node" << node->nodeId << " : receive xd handover request acknowledgment at " << getSimTime(node) / (double)SECOND << " second." << endl;
 }
+
+
 //Added by WLH
 void Layer3FxSetTimerForRrc(
 	Node* node, int interfaceIndex, const fxRnti& rnti, int eventType,

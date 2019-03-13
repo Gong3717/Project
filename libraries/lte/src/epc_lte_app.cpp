@@ -6,6 +6,9 @@
 #include "log_lte.h"
 #include "epc_lte.h"
 #include "epc_lte_app.h"
+//gss xd
+#include "epc_fx_app.h"
+#include "network_ip.h"
 
 // /**
 // FUNCTION   :: EpcLteAppProcessEvent
@@ -174,6 +177,58 @@ EpcLteAppProcessEvent(Node *node, Message *msg)
             arg->hoParticipator);
         break;
     }
+	//gss xd
+	case EPC_XD_MESSAGE_TYPE_HANDOVER_REQURIED: 
+	{
+		EpcXdAppMessageArgument_HoRequried* arg=
+			(EpcXdAppMessageArgument_HoRequried*)container->value;
+		ERROR_Assert(node->nodeId == arg->xdhoParticipator.sgwmmeRnti.nodeId,
+			"received unexpected EPC message");
+		arg->xdhoParticipator.tgtxgRnti.interfaceIndex = 0;
+		arg->xdhoParticipator.tgtxgRnti.nodeId = 4;
+		Layer3LteReceiveXdHoRequried(node,
+			arg->xdhoParticipator.sgwmmeRnti.interfaceIndex,
+			arg->xdhoParticipator);
+		break;
+	}
+
+	//gss xd
+	case EPC_XD_MESSAGE_TYPE_HANDOVER_REQUEST: 
+	{
+		EpcXdAppMessageArgument_HoReq* arg =
+			(EpcXdAppMessageArgument_HoReq*)container->value;
+		ERROR_Assert(node->nodeId == arg->xdhoParticipator.tgtxgRnti.nodeId,
+			"received unexpected EPC message");
+		Layer3FxReceiveXdHoReq(node,
+			arg->xdhoParticipator.tgtxgRnti.interfaceIndex,
+			arg->xdhoParticipator);
+		break;
+	}
+	//gss xd
+	case EPC_XD_MESSAGE_TYPE_HANDOVER_REQUEST_ACKNOWLEDGE:
+	{
+		EpcXdAppMessageArgument_HoReqAck* arg =
+			(EpcXdAppMessageArgument_HoReqAck*)container->value;
+		ERROR_Assert(node->nodeId == arg->xdhoParticipator.sgwmmeRnti.nodeId,
+			"received unexpected EPC message");
+		Layer3FxReceiveXdHoReqAck(node,
+			arg->xdhoParticipator.sgwmmeRnti.interfaceIndex,
+			arg->xdhoParticipator);
+		break;
+	}
+	case EPC_XD_MESSAGE_TYPE_HANDOVER_COMMAND:
+	{
+		EpcXdAppMessageArgument_HoCommand* arg =
+			(EpcXdAppMessageArgument_HoCommand*)container->value;
+		ERROR_Assert(node->nodeId == arg->xdhoParticipator.srcEnbRnti.nodeId,
+			"received unexpected EPC message");
+		Layer3LteReceiveXdHoCommand(node,
+			arg->xdhoParticipator.srcEnbRnti.interfaceIndex,
+			arg->xdhoParticipator);
+		//ÇÐ»»µ½FXÍøÂç
+		//XdUpadateUeRoute(arg->xdhoParticipator.node, 1);
+		break;
+	}
     default:
     {
         ERROR_Assert(false, "received EPC message of unknown type");
@@ -262,6 +317,59 @@ EpcLteAppSend(Node* node,
 
     // delete container
     free(container);
+
+}
+
+//gss xd
+void
+EpcLteAppSendXdCommand(Node* node,
+	int interfaceIndex,
+	const LteRnti& src,
+	const LteRnti& dst,
+	EpcMessageType type,
+	int payloadSize,
+	char *payload,
+	int virtualPacketSize)
+{
+	EpcData* epc = EpcLteGetEpcData(node);
+
+	// pack EpcMessageType and payload to container
+	int containerSize = sizeof(EpcLteAppMessageContainer) + payloadSize;
+	EpcLteAppMessageContainer* container =
+		(EpcLteAppMessageContainer*)malloc(containerSize);
+	container->src = src;
+	container->dst = dst;
+	container->type = type;
+	container->length = payloadSize;
+	if (payloadSize > 0)
+	{
+		memcpy(container->value, payload, payloadSize);
+	}
+
+
+	// resolve source and destination address for EPC subnet
+	/*NodeAddress sourceAddr = EpcLteAppGetNodeAddressOnEpcSubnet(
+		node, node->nodeId);*/
+	NodeAddress sourceAddr = 3187672577; //sgwmmeµÄUintµØÖ· ÔÝÊ±Ð´ËÀ
+	NodeAddress destAddr = EpcLteAppGetNodeAddressOnEpcSubnet(
+		node, dst.nodeId);
+
+	EpcLteAppCommitToUdp(
+		node,
+		APP_EPC_LTE,
+		sourceAddr,
+		APP_EPC_LTE,
+		destAddr,
+		epc->outgoingInterfaceIndex,
+		(char*)container,
+		containerSize,
+		APP_DEFAULT_TOS,
+		EPC_LTE_APP_DELAY,
+		TRACE_EPC_LTE,
+		virtualPacketSize);
+
+	// delete container
+	free(container);
 
 }
 
@@ -828,3 +936,29 @@ BOOL EpcLteAppIsNodeOnTheSameEpcSubnet(
     return (addr != ANY_ADDRESS);
 }
 
+//gss xd
+void XdUpadateUeRoute(Node* node, int interfaceIndex) {
+	NodeAddress destAddr;
+	NodeAddress destMask;
+	NodeAddress nextHop;
+	int outgoingInterfaceIndex;
+	LteStationType stationType =
+		LteLayer2GetStationType(node, interfaceIndex);
+	if (stationType == LTE_STATION_TYPE_UE) {
+		destAddr = 0;   // default route
+		destMask = 0;   // default route
+		nextHop = 3187672066;
+		outgoingInterfaceIndex = 0;
+	}
+	NetworkRoutingProtocolType type = ROUTING_PROTOCOL_STATIC;
+	int cost = 0;
+
+	NetworkUpdateForwardingTable(
+		node,
+		destAddr,
+		destMask,
+		nextHop,
+		outgoingInterfaceIndex,
+		cost,
+		type);
+}

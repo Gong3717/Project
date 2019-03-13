@@ -6,7 +6,8 @@
 #include "EPC_fx.h"
 #include "EPC_fx_app.h"
 #include "epc_lte.h"  //gss xd
-#include "EPC_lte_app.h" //gss xd
+#include "epc_lte_app.h" //gss xd
+#include "epc_lte_common.h" //gss xd
 
 //#include "layer3_fx.h"
 
@@ -240,24 +241,25 @@ EpcFxAppSend(Node* node,
 
 }
 
-//gss xd  发送星地切换请求时调用
+//gss xd  
+//发送星地切换请求确认时调用
 void
 EpcXdAppSend(Node* node,
 	int interfaceIndex,
 	const LteRnti& src,
 	const fxRnti& dst,
-	EpcFxMessageType type,
+	EpcMessageType type,
 	int payloadSize,
 	char *payload,
 	int virtualPacketSize)
 {
-	EpcFxData* epc = EpcFxGetEpcData(node);
+	EpcData* epc = EpcLteGetEpcData(node);
 	// pack EpcMessageType and payload to container
-	int containerSize = sizeof(EpcXdAppMessageContainer) + payloadSize;
-	EpcXdAppMessageContainer* container =
-		(EpcXdAppMessageContainer*)malloc(containerSize);
+	int containerSize = sizeof(EpcLteAppMessageContainer) + payloadSize;
+	EpcLteAppMessageContainer* container =
+		(EpcLteAppMessageContainer*)malloc(containerSize);
 	container->src = src;
-	container->dst = dst;
+	container->tgt = dst;
 	container->type = type;
 	container->length = payloadSize;
 	if (payloadSize > 0)
@@ -266,45 +268,98 @@ EpcXdAppSend(Node* node,
 	}
 
 	// resolve source and destination address for EPC subnet
-	NodeAddress sourceAddr = EpcFxAppGetNodeAddressOnEpcSubnet(
-		node, node->nodeId);
+	/*NodeAddress sourceAddr = EpcFxAppGetNodeAddressOnEpcSubnet(
+		node, node->nodeId);*/
+	NodeAddress sourceAddr = 3187672577; //sgwmme的Uint地址 暂时写死
 	NodeAddress destAddr = EpcFxAppGetNodeAddressOnEpcSubnet(
 		node, dst.nodeId);
 
-	EpcFxAppCommitToUdp(
+	EpcLteAppCommitToUdp(
 		node,
-		APP_EPC_FX,
+		APP_EPC_LTE,
 		sourceAddr,
-		APP_EPC_FX,
+		APP_EPC_LTE,
 		destAddr,
 		epc->outgoingInterfaceIndex,
 		(char*)container,
 		containerSize,
 		APP_DEFAULT_TOS,
-		EPC_FX_APP_DELAY,
-		TRACE_EPC_FX,
+		EPC_LTE_APP_DELAY,
+		TRACE_EPC_LTE,
 		virtualPacketSize);
 
 	// delete container
 	free(container);
 }
 
-//gss xd 发送星地切换请求确认时调用
+//gss xd 
+//发送星地切换请求时调用
 void
 EpcXdAppSend(Node* node,
 	int interfaceIndex,
 	const fxRnti& src,
 	const LteRnti& dst,
-	EpcFxMessageType type,
+	EpcMessageType type,
 	int payloadSize,
 	char *payload,
 	int virtualPacketSize)
 {
-	EpcFxData* epc = EpcFxGetEpcData(node);
+	EpcData* epc = EpcLteGetEpcData(node);
 	// pack EpcMessageType and payload to container
-	int containerSize = sizeof(EpcXdAppMessageContainer1) + payloadSize;
-	EpcXdAppMessageContainer1* container =
-		(EpcXdAppMessageContainer1*)malloc(containerSize);
+	int containerSize = sizeof(EpcLteAppMessageContainer) + payloadSize;
+	EpcLteAppMessageContainer* container =
+		(EpcLteAppMessageContainer*)malloc(containerSize);
+	container->tgt = src;
+	container->dst = dst;
+	container->type = type;
+	container->length = payloadSize;
+	if (payloadSize > 0)
+	{
+		memcpy(container->value, payload, payloadSize);
+	}
+
+	// resolve source and destination address for EPC subnet
+	NodeAddress sourceAddr = EpcLteAppGetNodeAddressOnEpcSubnet(
+		node, node->nodeId);
+	/*NodeAddress destAddr = EpcLteAppGetNodeAddressOnEpcSubnet(
+		node, dst.nodeId);*/
+	NodeAddress destAddr = 3187672577; //sgwmme的Uint地址 暂时写死
+
+	EpcLteAppCommitToUdp(
+		node,
+		APP_EPC_LTE,
+		sourceAddr,
+		APP_EPC_LTE,
+		destAddr,
+		epc->outgoingInterfaceIndex,
+		(char*)container,
+		containerSize,
+		APP_DEFAULT_TOS,
+		EPC_LTE_APP_DELAY,
+		TRACE_EPC_LTE,
+		virtualPacketSize);
+
+	// delete container
+	free(container);
+}
+
+//gss xd 发送星地请求需求时调用
+void
+EpcXdAppSendRequried(Node* node,
+	int interfaceIndex,
+	const LteRnti& src,
+	const LteRnti& dst,
+	EpcMessageType type,
+	int payloadSize,
+	char *payload,
+	int virtualPacketSize)
+{
+	//EpcFxData* epc = EpcFxGetEpcData(node);
+	EpcData* epc = EpcLteGetEpcData(node);
+	// pack EpcMessageType and payload to container
+	int containerSize = sizeof(EpcLteAppMessageContainer) + payloadSize;
+	EpcLteAppMessageContainer* container =
+		(EpcLteAppMessageContainer*)malloc(containerSize);
 	container->src = src;
 	container->dst = dst;
 	container->type = type;
@@ -315,23 +370,23 @@ EpcXdAppSend(Node* node,
 	}
 
 	// resolve source and destination address for EPC subnet
-	NodeAddress sourceAddr = EpcFxAppGetNodeAddressOnEpcSubnet(
+	NodeAddress sourceAddr = EpcLteAppGetNodeAddressOnEpcSubnet(
 		node, node->nodeId);
-	NodeAddress destAddr = EpcFxAppGetNodeAddressOnEpcSubnet(
+	NodeAddress destAddr = EpcLteAppGetNodeAddressOnEpcSubnet(
 		node, dst.nodeId);
 
-	EpcFxAppCommitToUdp(
+	EpcLteAppCommitToUdp(
 		node,
-		APP_EPC_FX,
+		APP_EPC_LTE,
 		sourceAddr,
-		APP_EPC_FX,
+		APP_EPC_LTE,
 		destAddr,
 		epc->outgoingInterfaceIndex,
 		(char*)container,
 		containerSize,
 		APP_DEFAULT_TOS,
-		EPC_FX_APP_DELAY,
-		TRACE_EPC_FX,
+		EPC_LTE_APP_DELAY,
+		TRACE_EPC_LTE,
 		virtualPacketSize);
 
 	// delete container
@@ -985,25 +1040,33 @@ FxDeleteRouteFromForwardingTable(
 	}
 }
 
-//gss2019
+//gss xd
 void EpcXdAppSend_HandoverRequried(
 	Node *node,
 	UInt32 interfaceIndex,
-	const XdHandoverParticipator& xdhoParticipator) {
+	const LteRnti& ueRnti,
+	const LteRnti& srcEnbRnti,
+	Node *ueNode)
+{
 	EpcData* epc = EpcLteGetEpcData(node);
 	ERROR_Assert(epc, "EPC subnet should be specified to send EPC app");
-
-	EpcXdAppMessageArgument_HoReq arg;
-	// send
-	EpcLteAppSend(node,
+	EpcXdAppMessageArgument_HoRequried requried;
+	requried.xdhoParticipator.srcEnbRnti = srcEnbRnti;
+	requried.xdhoParticipator.sgwmmeRnti= epc->sgwmmeRnti;
+	requried.xdhoParticipator.ueRnti = ueRnti;
+	requried.xdhoParticipator.node = ueNode;
+	//add ue node
+	EpcXdAppSendRequried(node,
 		interfaceIndex,
-		arg.xdhoParticipator.srcEnbRnti,
-		arg.xdhoParticipator.sgwmmeRnti,
+		srcEnbRnti,
+		requried.xdhoParticipator.sgwmmeRnti,
 		EPC_XD_MESSAGE_TYPE_HANDOVER_REQURIED,
-		sizeof(EpcXdAppMessageArgument_HoReq),
-		(char*)&arg);
+		sizeof(EpcXdAppMessageArgument_HoRequried),
+		(char*)&requried, 0);
 	// update stats
-	epc->statData.numHandoverRequiredSent++;
+	epc->statData.numXdHandoverRequiredSent++;
+	cout << "node" << node->nodeId << " : sent xd handover require at " << getSimTime(node) / (double)SECOND << " second." << endl;
+	
 }
 
 //gss xd
@@ -1014,17 +1077,19 @@ void EpcXdAppSend_HandoverCommand(
 	EpcData* epc = EpcLteGetEpcData(node);
 	ERROR_Assert(epc, "EPC subnet should be specified to send EPC app");
 
-	EpcXdAppMessageArgument_HoReq arg;
+	EpcXdAppMessageArgument_HoCommand arg;
+	arg.xdhoParticipator = xdhoParticipator;
 	// send
-	EpcLteAppSend(node,
+	EpcLteAppSendXdCommand(node,
 		interfaceIndex,
 		arg.xdhoParticipator.sgwmmeRnti,
 		arg.xdhoParticipator.srcEnbRnti,
 		EPC_XD_MESSAGE_TYPE_HANDOVER_COMMAND,
-		sizeof(EpcXdAppMessageArgument_HoReq),
+		sizeof(EpcXdAppMessageArgument_HoCommand),
 		(char*)&arg);
 	// update stats
-	epc->statData.numHandoverCommandSent++;
+	epc->statData.numXdHandoverCommandSent++;
+	cout << "node" << node->nodeId << " : sent xd handover command at " << getSimTime(node) / (double)SECOND << " second." << endl;
 }
 //gss xd
 void EpcXdAppSend_HandoverRequest(
@@ -1032,7 +1097,7 @@ void EpcXdAppSend_HandoverRequest(
 	UInt32 interfaceIndex,
 	const XdHandoverParticipator& xdhoParticipator)
 {
-	EpcFxData* epc = EpcFxGetEpcData(node);
+	EpcData* epc = EpcLteGetEpcData(node);
 	ERROR_Assert(epc, "EPC subnet should be specified to send EPC app");
 
 	EpcXdAppMessageArgument_HoReq arg;
@@ -1051,24 +1116,23 @@ void EpcXdAppSend_HandoverRequest(
 		(char*)&arg);
 
 	// update stats
-	epc->statData.numHandoverRequestSent++;
+	epc->statData.numXdHandoverRequestSent++;
+	cout << "node" << node->nodeId << " : sent xd handover request at " << getSimTime(node) / (double)SECOND << " second." << endl;
 }
+
 
 //gss xd
 void EpcXdAppSend_HandoverRequestAck(
 	Node *node,
 	UInt32 interfaceIndex,
-	const XdHandoverParticipator& xdhoParticipator,
-	const FXRrcConnectionReconfiguration& fxreconf)
+	const XdHandoverParticipator& xdhoParticipator)
 {
-	EpcFxData* epc = EpcFxGetEpcData(node);
+	EpcData* epc = EpcLteGetEpcData(node);
 	ERROR_Assert(epc, "EPC subnet should be specified to send EPC app");
 
 	EpcXdAppMessageArgument_HoReqAck arg;
 	// set participators
 	arg.xdhoParticipator = xdhoParticipator;
-	// set rrc config
-	arg.fxreconf = fxreconf;  // copy
 
 	//目标XG向SGWMME发送切换请求确认
 	EpcXdAppSend(node,
@@ -1080,5 +1144,6 @@ void EpcXdAppSend_HandoverRequestAck(
 		(char*)&arg);
 
 	// update stats
-	epc->statData.numHandoverRequestAckSent++;
+	epc->statData.numXdHandoverRequestAckSent++;
+	cout << "node" << node->nodeId << " : sent xd handover request acknowledgment at " << getSimTime(node) / (double)SECOND << " second." << endl;
 }

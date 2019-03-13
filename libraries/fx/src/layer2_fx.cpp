@@ -313,6 +313,7 @@ void FxLayer2ProcessEvent(Node * node, int interfaceIndex, Message * msg)
 	}
 		//RRC Event
 	case MSG_RRC_FX_HandoverScheduleTimerExpired:
+	case MSG_RRC_FX_XdHandoverScheduleTimerExpired:
 	{
 		Layer3FxProcessEvent(node, interfaceIndex, msg);
 		break;

@@ -47,7 +47,7 @@ enum {
 };
 
 
-
+typedef
 struct struct_vbr_str
 {
     int state;
@@ -74,7 +74,7 @@ struct struct_vbr_str
     BOOL isMdpEnabled;
     std::string* applicationName;
     STAT_AppStatistics* appStats;
-};
+}APPDataVbr;
 
 
 struct struct_vbr_msg_str

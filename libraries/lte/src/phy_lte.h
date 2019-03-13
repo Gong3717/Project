@@ -37,6 +37,7 @@
 #endif // LTE_LIB_LOG
 #include "layer3_lte_measurement.h"
 #include "layer3_lte.h"
+#include "phy_fx.h" //gss xd
 
 ///////////////////////////////////////////////////////////////
 // swtiches
@@ -746,6 +747,16 @@ typedef struct struct_phy_lte_str {
 #endif
 
 } PhyDataLte;
+
+//gss xd
+typedef struct
+{
+	Node*  node;
+	LteRnti ueRnti;
+	double  txPower_dBm;
+	PhyDataLte* phylte;
+	//PhyDataFx* phy_sphy;
+}XdMeasurementReport;
 
 //--------------------------------------------------------------------------
 //  Constant array

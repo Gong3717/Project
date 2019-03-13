@@ -159,6 +159,8 @@ typedef struct struct_traffic_gen_client
     std::string*           applicationName;
     STAT_AppStatistics*    stats;
 
+	NodeId destNodeId; // destination node id for this app session   //gss 
+
 } TrafficGenClient;
 
 // Structure containing traffic gen related information.

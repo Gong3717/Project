@@ -21,8 +21,9 @@
 #include <iostream.h>
 #else /* NOT_RTI_NG */
 #include <iostream>
-using namespace std;
+//using namespace std;
 #endif /* NOT_RTI_NG */
+
 
 #include <cstdio>
 #include <cstdlib>
@@ -32,6 +33,7 @@ using namespace std;
 #include <csignal>
 #include <cassert>
 #include <cerrno>
+#include "string"  //gss xd
 
 #include "hla_shared.h"
 #include "hla_FedAmb.h"
@@ -39,10 +41,25 @@ using namespace std;
 #include "WallClock.h"
 #include "external_util.h"
 
+#include "app_cbr.h"   //gss xd
+#include "app_vbr.h"
+#include "app_voip.h"
+#include "app_traffic_gen.h"
+//#include "partition.h" //gss xd
+#include "application.h" //gss xd
+
+//gss xd
+#include <deque>
+#include <map>	
+#include <iterator>
+#include <sstream>
+using namespace std;
 // This global is two ways:
 // (1) To support the signal() call on Ctrl-C (SIGINT), because the
 //     signal() handler only takes a single integer argument.
 // (2) To support HlaGetIfaceDataFromNodeId().
+
+deque<APPStatsNew> g_APPStatsNew_deque;   //gss xd
 
 HlaInterfaceData* g_ifaceData = 0;
 
@@ -3132,3 +3149,473 @@ HlaSendCommentIxn(HlaInterfaceData * ifaceData,
     delete set;
     set = NULL;
 }
+
+#ifdef CoSimSystem
+	void HlaInterfaceTimerNotificationSet(PartitionData* partitionData, clocktype delay)
+	{
+		Node* node = partitionData->firstNode;
+			Message* newMsg = NULL;
+			newMsg = MESSAGE_Alloc(node,
+				                  EXTERNAL_LAYER,
+				                  EXTERNAL_HLA,
+				                  MSG_EXTERNAL_HLA_SendMeticNotification);
+			MESSAGE_Send(node, newMsg, delay);
+	}
+	
+	//gss xd
+
+	////send the end simulation
+	//static string conFig;
+	//int StatsNum;
+	//功能：发送业务统计数据
+	//开始时间：9s
+	//发送间隔：12s
+	//参数：当前仿真时间、业务ID、业务类型、源节点、目的节点、发送数据量、接收数据量、时延、时延抖动、丢包率、标签（场景名、场景规模、唯一标志符）
+	void HlaInterfaceSendAppSingleTraffic(Node* node, Message* msg, HlaInterfaceData * ifaceData)
+	{
+		//partitionData->sysAPPStats = (APPStatsList *)MEM_malloc(200 * 8000 * sizeof(APPStatsList));//lee
+		Node* newNode = node;
+		int newEleAppID = 0;
+		while (newNode)
+		{
+			clocktype simTime = *newNode->currentTime;
+			AppInfo* applist = newNode->appData.appPtr;
+			//PortInfo* applist = newNode->appData.portTable;
+			while (applist)
+			{
+				if (applist->appType == APP_CBR_CLIENT)
+				{
+					NodeId nodeId = newNode->nodeId;
+
+					clocktype delay = 5 * SECOND;
+					double simTimeInDouble = simTime * 1.0 / SECOND;
+					SDHEle_AppType eleAppType;  //0代表PMU业务，1代表稳控业务//20171211
+					double dataSent = 0.0;
+					double AppJet = 0.0;
+					double AppDelay = 0.0;
+					double AppThroughput = 0.0;
+					double AppSend = 0.0;
+					int MessageSent = 0;
+					int MessageRcv = 0;
+					double AppPacketLoss = 0.0;
+					AppDataCbrClient* CBRclientPtr = (AppDataCbrClient*)applist->appDetail;
+
+					double appInterval = CBRclientPtr->interval * 1.0 / SECOND;//20171211通过时间间隔来区分业务类型
+
+					char errorString[MAX_STRING_LENGTH];
+
+					//PARTITION_NodeExists: Determines whether the node ID exists in the scenario
+					if (PARTITION_NodeExists(newNode->partitionData, CBRclientPtr->receiverId) == FALSE)
+					{
+						sprintf(errorString,
+							"Node %d does not exist",
+							CBRclientPtr->receiverId);
+						ERROR_ReportError(errorString);
+					}
+
+					//assume the node is on the current partition
+					Node* serverNode = MAPPING_GetNodePtrFromHash(
+						ifaceData->m_hla->partitionData->nodeIdHash,
+						CBRclientPtr->receiverId);
+					//not on this partition
+					if (serverNode == NULL)
+					{
+						PARTITION_ReturnNodePointer(ifaceData->m_hla->partitionData, &serverNode, CBRclientPtr->receiverId, TRUE);
+					}
+
+					AppInfo* appSerlist = serverNode->appData.appPtr;
+					//PortInfo* appSerlist = serverNode->appData.portTable;
+					while (appSerlist)
+					{
+						if (appSerlist->appType == APP_CBR_SERVER)
+						{
+							AppDataCbrClient* CBRclientPtr = (AppDataCbrClient*)applist->appDetail;
+							AppDataCbrServer* CBRserverPtr = (AppDataCbrServer*)appSerlist->appDetail;
+
+							eleAppType = Normal_CBR;
+
+							if (((simTime - delay < CBRclientPtr->endTime) || (CBRclientPtr->endTime == 0)))
+							{
+								//we can get the CBR application STATS data
+								double sessionLastRcvTime = CBRserverPtr->stats->GetLastMessageReceived(STAT_Unicast).GetValue(simTime);
+								//printf("sessionStarttime===%f--------------sessionFinishtime===%f\n",sessionStarttime,sessionFinishtime);
+
+								//when the SessionFinish is not 0, which suggests that the Session is end
+								//int SrcName = node->nodeId;
+								char* SrcName = newNode->hostname;
+								char* DestName = serverNode->hostname;
+								int Src = newNode->nodeId;
+								int Dest = serverNode->nodeId;
+								char* ServiceType = "CBR";
+								if (abs(sessionLastRcvTime - simTimeInDouble) < 2.0)
+								{
+
+									newEleAppID = newEleAppID + 1;
+									AppSend = CBRclientPtr->stats->GetOfferedLoad(STAT_Unicast).GetValue(simTime);
+									AppThroughput = CBRserverPtr->stats->GetThroughput(STAT_Unicast).GetValue(simTime);
+									AppDelay = (CBRserverPtr->stats->GetAverageDelay(STAT_Unicast).GetValue(simTime))*1000.0;
+									AppJet = (CBRserverPtr->stats->GetAverageJitter(STAT_Unicast).GetValue(simTime))*1000.0;
+									dataSent = (CBRclientPtr->stats->GetDataSent(STAT_Unicast).GetValue(simTime));
+
+
+									//SJW // AppPacketLoss =1-(AppRcv/512*8)/(AppSend/512*8);实时输出结果有负数
+
+									MessageSent = CBRclientPtr->stats->GetMessagesSent(STAT_Unicast).GetValue(simTime);
+									MessageRcv = CBRserverPtr->stats->GetMessagesReceived(STAT_Unicast).GetValue(simTime);
+									AppPacketLoss = 100.0*(1.0 - ((double)MessageRcv / (double)MessageSent));
+									//ZZ//20171208
+									/*node->appData.sysAPPStats[node->appData.numofservice-1].AppDelay = AppDelay;
+									node->appData.sysAPPStats[node->appData.numofservice-1].AppJet = AppJet;
+									node->appData.sysAPPStats[node->appData.numofservice-1].AppPacketLoss = AppPacketLoss;
+									node->appData.sysAPPStats[node->appData.numofservice-1].AppSend = AppSend;
+									node->appData.sysAPPStats[node->appData.numofservice-1].AppThroughput = AppThroughput;
+									node->appData.sysAPPStats[node->appData.numofservice-1].delay = delay;
+									node->appData.sysAPPStats[node->appData.numofservice-1].eleAppType = eleAppType;
+									node->appData.sysAPPStats[node->appData.numofservice-1].MessageRcv = MessageRcv;
+									node->appData.sysAPPStats[node->appData.numofservice-1].MessageSent = MessageSent;
+									node->appData.sysAPPStats[node->appData.numofservice-1].simTime = simTime;*/
+
+
+									APPStatsNew statsNew;
+									statsNew.SrcId = Src;
+									statsNew.DestId = Dest;
+									statsNew.AppDelay = AppDelay;
+									statsNew.Servicetype = ServiceType;
+									statsNew.AppJet = AppJet;
+									statsNew.AppPacketLoss = AppPacketLoss;
+									statsNew.AppSend = AppSend;
+									statsNew.AppThroughput = AppThroughput;
+									statsNew.delay = delay;
+									statsNew.eleAppType = eleAppType;
+									statsNew.MessageRcv = MessageRcv;
+									statsNew.MessageSent = MessageSent;
+									statsNew.simTime = simTime / 1000000000;
+									statsNew.dataSent = dataSent;
+
+									g_APPStatsNew_deque.push_back(statsNew);
+									//ifaceData->m_hla->partitionData->sysAPPStats[ifaceData->m_hla->partitionData->numoflist-1].
+
+								}
+
+								NodeAddress destNodeAddress = CBRclientPtr->stats->GetDestAddr().interfaceAddr.ipv4;
+								break;
+
+							}
+						}//end if CBR server
+						 //appSerlist = appSerlist->next;
+						appSerlist = appSerlist->appNext;
+					}//end while 
+				}//end if CBR client
+				else if (applist->appType == APP_VBR_CLIENT)
+				{
+					NodeId nodeId = newNode->nodeId;
+					clocktype delay = 5 * SECOND;
+					double simTimeInDouble = simTime * 1.0 / SECOND;
+					SDHEle_AppType eleAppType;  //0代表PMU业务，1代表稳控业务//20171211
+					double dataSent = 0.0;
+					double AppJet = 0.0;
+					double AppDelay = 0.0;
+					double AppThroughput = 0.0;
+					double AppSend = 0.0;
+					int MessageSent = 0;
+					int MessageRcv = 0;
+					double AppPacketLoss = 0.0;
+
+					APPDataVbr* VbrclientPtr = (APPDataVbr*)applist->appDetail;
+					//xyt
+					//multi-processor process
+					char errorString[MAX_STRING_LENGTH];
+
+					//PARTITION_NodeExists: Determines whether the node ID exists in the scenario
+					if (PARTITION_NodeExists(newNode->partitionData, VbrclientPtr->appStats->GetDestNodeId()) == FALSE)
+					{
+						sprintf(errorString,
+							"Node %d does not exist",
+							VbrclientPtr->appStats->GetDestNodeId());
+						ERROR_ReportError(errorString);
+					}
+
+					//assume the node is on the current partition
+					Node* serverNode = MAPPING_GetNodePtrFromHash(
+						ifaceData->m_hla->partitionData->nodeIdHash,
+						VbrclientPtr->appStats->GetDestNodeId());
+					//not on this partition
+					if (serverNode == NULL)
+					{
+						PARTITION_ReturnNodePointer(ifaceData->m_hla->partitionData, &serverNode, VbrclientPtr->appStats->GetDestNodeId(), TRUE);
+					}
+
+					AppInfo* appSerlist = serverNode->appData.appPtr;
+					//PortInfo* appSerlist = serverNode->appData.portTable;
+					while (appSerlist)
+					{
+						if (appSerlist->appType == APP_VBR_SERVER)
+						{
+							APPDataVbr* VbrserverPtr = (APPDataVbr*)appSerlist->appDetail;
+							//APPDataVbr* VbrclientPtr = (APPDataVbr*)applist->appDetail;
+
+							eleAppType = Normal_VBR;
+							if ((simTime - delay < VbrclientPtr->endTime) || (VbrclientPtr->endTime == 0))
+							{
+								//double sessionLastRcvTime = VbrserverPtr->appStats->GetLastMessageReceived(STAT_Unicast).GetValue(simTime);
+								//printf("sessionStarttime===%f--------------sessionFinishtime===%f\n",sessionStarttime,sessionFinishtime);
+
+								//when the SessionFinish is not 0, which suggests that the Session is end
+								//int SrcName = node->nodeId;
+								char* SrcName = newNode->hostname;
+								char* DestName = serverNode->hostname;
+								int Src = newNode->nodeId;
+								int Dest = serverNode->nodeId;
+								char* ServiceType = "VBR";
+								while (VbrserverPtr->appStats && VbrserverPtr->appStats->GetSourceNodeId() == newNode->nodeId && VbrserverPtr->appStats->GetSessionId() == VbrclientPtr->appStats->GetSessionId())
+								{
+									AppSend = VbrclientPtr->appStats->GetOfferedLoad(STAT_Unicast).GetValue(simTime);
+									AppThroughput = VbrserverPtr->appStats->GetThroughput(STAT_Unicast).GetValue(simTime);
+									AppDelay = (VbrserverPtr->appStats->GetAverageDelay(STAT_Unicast).GetValue(simTime))*1000.0;
+									AppJet = (VbrserverPtr->appStats->GetAverageJitter(STAT_Unicast).GetValue(simTime))*1000.0;
+									dataSent = (VbrclientPtr->appStats->GetDataSent(STAT_Unicast).GetValue(simTime));
+									//SJW // AppPacketLoss =1-(AppRcv/512*8)/(AppSend/512*8);实时输出结果有负数
+
+									MessageSent = VbrclientPtr->appStats->GetMessagesSent(STAT_Unicast).GetValue(simTime);
+									MessageRcv = VbrserverPtr->appStats->GetMessagesReceived(STAT_Unicast).GetValue(simTime);
+									AppPacketLoss = 100.0*(1.0 - ((double)MessageRcv / (double)MessageSent));
+									NodeAddress destNodeAddress = VbrclientPtr->appStats->GetDestAddr().interfaceAddr.ipv4;
+
+									APPStatsNew statsNew;
+									statsNew.SrcId = Src;
+									statsNew.DestId = Dest;
+									statsNew.AppDelay = AppDelay;
+									statsNew.Servicetype = ServiceType;
+									statsNew.AppJet = AppJet;
+									statsNew.AppPacketLoss = AppPacketLoss;
+									statsNew.AppSend = AppSend;
+									statsNew.AppThroughput = AppThroughput;
+									statsNew.delay = delay;
+									statsNew.eleAppType = eleAppType;
+									statsNew.MessageRcv = MessageRcv;
+									statsNew.MessageSent = MessageSent;
+									statsNew.simTime = simTime / 1000000000;
+									statsNew.dataSent = dataSent;
+									g_APPStatsNew_deque.push_back(statsNew);
+									break;
+								}
+							}
+						}//end if Traffic gen server
+
+						 //appSerlist = appSerlist->next;
+						appSerlist = appSerlist->appNext;
+					}//end while 
+				}
+				else if (applist->appType == APP_VOIP_CALL_INITIATOR)//APP_VOIP_CALL_RECEIVER
+				{
+					NodeId nodeId = newNode->nodeId;
+					clocktype delay = 5 * SECOND;
+					double simTimeInDouble = simTime * 1.0 / SECOND;
+					SDHEle_AppType eleAppType;	//0代表PMU业务，1代表稳控业务//20171211
+					double dataSent = 0.0;
+					double AppJet = 0.0;
+					double AppDelay = 0.0;
+					double AppThroughput = 0.0;
+					double AppSend = 0.0;
+					int MessageSent = 0;
+					int MessageRcv = 0;
+					double AppPacketLoss = 0.0;
+
+					VoipHostData* VoipInitiatorPtr = (VoipHostData*)applist->appDetail;
+					//multi-processor process
+					char errorString[MAX_STRING_LENGTH];
+
+				//PARTITION_NodeExists: Determines whether the node ID exists in the scenario
+					if (PARTITION_NodeExists(newNode->partitionData, VoipInitiatorPtr->receiverId) == FALSE)
+					{
+						sprintf(errorString,
+							"Node %d does not exist",
+							VoipInitiatorPtr->receiverId);
+						ERROR_ReportError(errorString);
+					}
+
+					//assume the node is on the current partition
+					Node* serverNode = MAPPING_GetNodePtrFromHash(
+						ifaceData->m_hla->partitionData->nodeIdHash,
+						VoipInitiatorPtr->receiverId);
+					//not on this partition
+					if (serverNode == NULL)
+					{
+						PARTITION_ReturnNodePointer(ifaceData->m_hla->partitionData, &serverNode, VoipInitiatorPtr->receiverId, TRUE);
+					}
+
+					AppInfo* appSerlist = serverNode->appData.appPtr;
+					//PortInfo* appSerlist = serverNode->appData.portTable;
+					while (appSerlist)
+					{
+						if (appSerlist->appType == APP_VOIP_CALL_RECEIVER)
+						{
+							VoipHostData* VoipReceiverPtr = (VoipHostData*)appSerlist->appDetail;
+
+							eleAppType = Normal_VOIP;
+							if ((simTime - delay < VoipInitiatorPtr->endTime) || (VoipInitiatorPtr->endTime == 0))
+							{
+								//double sessionLastRcvTime = VbrserverPtr->appStats->GetLastMessageReceived(STAT_Unicast).GetValue(simTime);
+								//printf("sessionStarttime===%f--------------sessionFinishtime===%f\n",sessionStarttime,sessionFinishtime);
+
+								//when the SessionFinish is not 0, which suggests that the Session is end
+								//int SrcName = node->nodeId;
+								char* SrcName = newNode->hostname;
+								char* DestName = serverNode->hostname;
+								int Src = newNode->nodeId;
+								int Dest = serverNode->nodeId;
+								char* ServiceType = "VOIP";
+								while (VoipReceiverPtr->stats && VoipReceiverPtr->stats->GetDestNodeId() == newNode->nodeId && VoipReceiverPtr->stats->GetSessionId() == VoipInitiatorPtr->stats->GetSessionId())
+								{
+									AppSend = VoipInitiatorPtr->stats->GetOfferedLoad(STAT_Unicast).GetValue(simTime);
+									AppThroughput = VoipReceiverPtr->stats->GetThroughput(STAT_Unicast).GetValue(simTime);
+									AppDelay = (VoipReceiverPtr->stats->GetAverageDelay(STAT_Unicast).GetValue(simTime))*1000.0;
+									AppJet = (VoipReceiverPtr->stats->GetAverageJitter(STAT_Unicast).GetValue(simTime))*1000.0;
+									dataSent = (VoipInitiatorPtr->stats->GetDataSent(STAT_Unicast).GetValue(simTime));
+
+									//VoipReceiverPtr->stats->
+									//SJW // AppPacketLoss =1-(AppRcv/512*8)/(AppSend/512*8);实时输出结果有负数
+
+									MessageSent = VoipInitiatorPtr->stats->GetMessagesSent(STAT_Unicast).GetValue(simTime);
+									MessageRcv = VoipReceiverPtr->stats->GetMessagesReceived(STAT_Unicast).GetValue(simTime);
+									AppPacketLoss = 100.0*(1.0 - ((double)MessageRcv / (double)MessageSent));
+									NodeAddress destNodeAddress = VoipReceiverPtr->stats->GetDestAddr().interfaceAddr.ipv4;
+
+									APPStatsNew statsNew;
+									statsNew.SrcId = Src;
+									statsNew.DestId = Dest;
+									statsNew.AppDelay = AppDelay;
+									statsNew.Servicetype = ServiceType;
+									statsNew.AppJet = AppJet;
+									statsNew.AppPacketLoss = AppPacketLoss;
+									statsNew.AppSend = AppSend;
+									statsNew.AppThroughput = AppThroughput;
+									statsNew.delay = delay;
+									statsNew.eleAppType = eleAppType;
+									statsNew.MessageRcv = MessageRcv;
+									statsNew.MessageSent = MessageSent;
+									statsNew.simTime = simTime / 1000000000;
+									statsNew.dataSent = dataSent;
+									g_APPStatsNew_deque.push_back(statsNew);
+
+									break;
+								}
+							}
+						}//end if Traffic gen server
+
+						 //appSerlist = appSerlist->next;
+						appSerlist = appSerlist->appNext;
+					}//end while 
+				}
+				else if (applist->appType == APP_TRAFFIC_GEN_CLIENT)
+				{
+					NodeId nodeId = newNode->nodeId;
+					clocktype delay = 5 * SECOND;
+					double simTimeInDouble = simTime * 1.0 / SECOND;
+					SDHEle_AppType eleAppType;  //0代表PMU业务，1代表稳控业务//20171211
+					double dataSent = 0.0;
+					double AppJet = 0.0;
+					double AppDelay = 0.0;
+					double AppThroughput = 0.0;
+					double AppSend = 0.0;
+					int MessageSent = 0;
+					int MessageRcv = 0;
+					double AppPacketLoss = 0.0;
+					int MessageLength = 0;
+
+					TrafficGenClient* TrafGenclientPtr = (TrafficGenClient*)applist->appDetail;
+					//xyt
+					//multi-processor process
+					char errorString[MAX_STRING_LENGTH];
+
+					//PARTITION_NodeExists: Determines whether the node ID exists in the scenario
+					if (PARTITION_NodeExists(newNode->partitionData, TrafGenclientPtr->stats->GetDestNodeId()) == FALSE)
+					{
+						sprintf(errorString,
+							"Node %d does not exist",
+							TrafGenclientPtr->stats->GetDestNodeId());
+						ERROR_ReportError(errorString);
+					}
+
+					//assume the node is on the current partition
+					Node* serverNode = MAPPING_GetNodePtrFromHash(
+						ifaceData->m_hla->partitionData->nodeIdHash,
+						TrafGenclientPtr->stats->GetDestNodeId());
+					//not on this partition
+					if (serverNode == NULL)
+					{
+						PARTITION_ReturnNodePointer(ifaceData->m_hla->partitionData, &serverNode, TrafGenclientPtr->stats->GetDestNodeId(), TRUE);
+					}
+
+					AppInfo* appSerlist = serverNode->appData.appPtr;
+					//PortInfo* appSerlist = serverNode->appData.portTable;
+					while (appSerlist)
+					{
+						if (appSerlist->appType == APP_TRAFFIC_GEN_SERVER)
+						{
+							//TrafficGenClient* TrafGenclientPtr = (TrafficGenClient*)applist->appDetail;
+							TrafficGenServer* TrafGenserverPtr = (TrafficGenServer*)appSerlist->appDetail;
+							eleAppType = Traffic_gen;
+							if ((simTime - delay < TrafGenclientPtr->endTm) || (TrafGenclientPtr->endTm == 0))
+							{
+								//double sessionLastRcvTime = TrafGenserverPtr->stats->GetLastMessageReceived(STAT_Unicast).GetValue(simTime);
+								//printf("sessionStarttime===%f--------------sessionFinishtime===%f\n",sessionStarttime,sessionFinishtime);
+
+								//when the SessionFinish is not 0, which suggests that the Session is end
+								//int SrcName = node->nodeId;
+								char* SrcName = newNode->hostname;
+								char* DestName = serverNode->hostname;
+								int Src = newNode->nodeId;
+								int Dest = serverNode->nodeId;
+								char* ServiceType = "TRAFFIC_GEN";
+								newEleAppID = newEleAppID + 1;
+								while (TrafGenserverPtr->stats && TrafGenserverPtr->stats->GetSourceNodeId() == newNode->nodeId && TrafGenclientPtr->stats->GetSessionId() == TrafGenserverPtr->stats->GetSessionId())
+								{
+									AppSend = TrafGenclientPtr->stats->GetOfferedLoad(STAT_Unicast).GetValue(simTime);
+									AppThroughput = TrafGenserverPtr->stats->GetThroughput(STAT_Unicast).GetValue(simTime);
+									AppDelay = (TrafGenserverPtr->stats->GetAverageDelay(STAT_Unicast).GetValue(simTime))*1000.0;
+									AppJet = (TrafGenserverPtr->stats->GetAverageJitter(STAT_Unicast).GetValue(simTime))*1000.0;
+									dataSent = (TrafGenclientPtr->stats->GetDataSent(STAT_Unicast).GetValue(simTime));
+									//SJW // AppPacketLoss =1-(AppRcv/512*8)/(AppSend/512*8);实时输出结果有负数
+									MessageSent = TrafGenclientPtr->stats->GetMessagesSent(STAT_Unicast).GetValue(simTime);
+									MessageRcv = TrafGenserverPtr->stats->GetMessagesReceived(STAT_Unicast).GetValue(simTime);
+									MessageLength = TrafGenclientPtr->stats->GetDataSent(STAT_Unicast).GetValue(simTime) / MessageSent;
+									AppPacketLoss = 100.0*(1.0 - ((double)MessageRcv / (double)MessageSent));
+									NodeAddress destNodeAddress = TrafGenclientPtr->stats->GetDestAddr().interfaceAddr.ipv4;
+
+									APPStatsNew statsNew;
+									statsNew.SrcId = Src;
+									statsNew.DestId = Dest;
+									statsNew.AppDelay = AppDelay;
+									statsNew.Servicetype = ServiceType;
+									statsNew.AppJet = AppJet;
+									statsNew.AppPacketLoss = AppPacketLoss;
+									statsNew.AppSend = AppSend;
+									statsNew.AppThroughput = AppThroughput;
+									statsNew.delay = delay;
+									statsNew.eleAppType = eleAppType;
+									statsNew.MessageRcv = MessageRcv;
+									statsNew.MessageSent = MessageSent;
+									statsNew.simTime = simTime / 1000000000;
+									statsNew.dataSent = dataSent;
+
+									g_APPStatsNew_deque.push_back(statsNew);
+
+
+									break;
+								}
+							}
+						}//end if Traffic gen server
+
+						 //appSerlist = appSerlist->next;
+						appSerlist = appSerlist->appNext;
+					}//end while 
+				}
+				applist = applist->appNext;
+			}
+			newNode = newNode->nextNodeData;
+		}
+		MESSAGE_Send(node, msg, 1 * SECOND);
+	}
+	
+#endif

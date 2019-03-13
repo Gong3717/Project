@@ -154,7 +154,20 @@ typedef struct phy_sphy_cqi {
 
 }PhySphyCqi; //信道质量
 
-
+struct Fx_Rss
+{
+	double time;
+	double rxPower;
+	bool operator <(const Fx_Rss f) const  //运算符重载   
+	{
+		return time < f.time;       //按照年龄由小到大进行排序   
+	}
+//public:
+//	struct struct_fx_rrs_data() :
+//		time(0),
+//		rxPower(0)
+//	{};	
+};
 
 typedef struct phy_fx_control_phy_to_mac_info {
 	BOOL isError;

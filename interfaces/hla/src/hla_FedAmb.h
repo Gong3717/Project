@@ -76,6 +76,9 @@ public:
     RTI::ParameterHandle        m_asrsTdlMessageCountHandle;
     RTI::ParameterHandle        m_asrsUserProtocolIdHandle;
 
+	//gss xd
+	RTI::InteractionClassHandle m_OpAppTrafficInfoSingleHandle;	//application single statsData
+
     HlaFedAmb(HlaInterfaceData * ifaceData);
     ~HlaFedAmb() throw(RTI::FederateInternalError);
 

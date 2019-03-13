@@ -274,6 +274,8 @@ typedef struct lte_rnti
 // List of RNTI
 typedef std::list < LteRnti > ListLteRnti;
 
+
+
 typedef struct struct_handover_participator
 {
     LteRnti ueRnti;

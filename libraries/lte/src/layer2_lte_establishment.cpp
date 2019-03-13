@@ -19,6 +19,8 @@
 
 #include "epc_lte_common.h"
 #include "epc_lte_app.h"
+//#include "epc_lte.h"    //gss xd
+//#include "epc_fx_app.h"//gss xd
 
 ////////////////////////////////////////////////////////////////////////////
 // define static function

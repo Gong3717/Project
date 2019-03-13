@@ -29,13 +29,24 @@
 #include "main.h"
 #include "mapping.h"
 
+//gss xd
+#include <deque>
+#include <iterator>
+using namespace std;
+//gss xd
+#include <fstream>
+#include "application.h" //gss xd
+
 #ifdef PARALLEL //Parallel
 #include "parallel.h"
 #include "parallel_private.h"
 #endif //endParallel
 
+
+
 #include "node.h"
 #include "partition.h"
+
 #include "external_util.h"
 #include "scheduler.h"
 #include "WallClock.h"
@@ -103,6 +114,9 @@
 #include "agi_interface.h"
 #endif
 
+
+//gss xd
+extern deque<APPStatsNew> g_APPStatsNew_deque;
 
 /* FUNCTION     PARTITION_PrintUsage
  * PURPOSE      Prints the command-line usage of the application.
@@ -559,6 +573,7 @@ void StatsDb_FinalizeLock(void)
 
 #endif /* ADDON_DB */
 }
+
 
 /*
  * FUNCTION     PARTITION_CreateEmptyPartition
@@ -1848,6 +1863,33 @@ public:
  */
 void PARTITION_Finalize(PartitionData* partitionData)
 {
+	//gss xd
+	deque<APPStatsNew>::iterator it = g_APPStatsNew_deque.begin();
+	ofstream ofile;               //定义输出文件
+	ofile.open("AppData.txt");     //作为输出文件打开
+	for (int i = 0; i < g_APPStatsNew_deque.size(); i++)
+	{
+		//APPStatsNew tmp = (*it);
+		char fchar[128] = { 0 };
+
+		sprintf(fchar, "%.4f", g_APPStatsNew_deque[i].AppThroughput);
+
+		ofile << g_APPStatsNew_deque[i].simTime << ','
+			<< g_APPStatsNew_deque[i].SrcId << ','
+			<< g_APPStatsNew_deque[i].DestId << ','
+			<< g_APPStatsNew_deque[i].Servicetype << ','
+			<< g_APPStatsNew_deque[i].AppDelay << ','
+			<< g_APPStatsNew_deque[i].AppJet << ','
+			<< fchar << ','
+			<< g_APPStatsNew_deque[i].MessageSent << ','
+			<< g_APPStatsNew_deque[i].MessageRcv << ','
+			<< g_APPStatsNew_deque[i].AppPacketLoss << ','
+			<< g_APPStatsNew_deque[i].dataSent
+			<< endl;   //数据写入文件
+
+		it++;
+	}
+	ofile.close();
     /* Insert the simulation end time in the stat file */
     if (partitionData->partitionId == 0)
     {

@@ -159,6 +159,15 @@ typedef struct
     Int32 sessionInitiator;
 #endif // ADDON_DB
     STAT_AppStatistics* stats;
+
+	//NodeId destNodeId;   //gss
+	//NodeId proxyNodeId; // destination node id for this SIP session 
+	//Int16 clientInterfaceIndex; // client interface index for this app 
+	//							// session
+	//Int16 destInterfaceIndex; // destination interface index for this app
+	//						  // session
+	//Int16 proxyInterfaceIndex; // proxy destination interface index for this app
+	//						   // session
 } VoipHostData;
 
 typedef struct voip_call_acceptance_list_entry_str
@@ -366,4 +375,10 @@ void VOIPSendRtpInitiateNewSession(Node* node,
     unsigned short localPort,
     BOOL           initiator,
     void*          RTPSendFunc);
+//gss
+//void
+//AppVoipClientAddAddressInformation(Node* node,
+//	VoipHostData* clientPtr,
+//	NodeAddress remoteAddr,
+//	bool isProxy = FALSE);
 #endif

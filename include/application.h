@@ -18,6 +18,9 @@
 #include "dynamic.h"
 #include "list.h"
 #include "mapping.h"
+#include <deque>
+#include <iterator>
+using namespace std;
 
 // /**
 // PACKAGE     :: APPLICATION LAYER
@@ -238,6 +241,19 @@ enum AppType
     APP_PLACEHOLDER
 };
 
+//gss xd
+enum SDHEle_AppType
+{
+	Ele_APP_PMU = 0,
+	Ele_APP_StabilityControl = 1,
+	Normal_CBR = 2,
+	Normal_MCBR = 3,
+	Normal_VBR = 4,
+	Normal_VoIP = 5,
+	Traffic_gen = 6,
+	Normal_VOIP = 7
+};
+
 // /**
 // STRUCT      :: AppInfo
 // DESCRIPTION :: Information relevant to specific app layer protocol
@@ -442,6 +458,31 @@ AppResetFunctionList
     AppResetFunction* last;
 };
 
+//gss xd
+// /**
+// STRUCT      :: AppData
+// DESCRIPTION :: Details of application data structure in node
+//                structure
+// **/
+struct APPStatsNew {
+	double AppSend;
+	double AppThroughput;
+	int SrcId;
+	int DestId;
+	double AppDelay;
+	double AppJet;
+	clocktype simTime;
+	double dataSent;
+	int MessageSent;
+	int MessageRcv;
+	double AppPacketLoss;
+	NodeId nodeId;
+	clocktype delay;
+	SDHEle_AppType eleAppType;
+	int numberofservice;
+	char* Servicetype;
+};
+//extern struct APPStatsNew;
 // /**
 // STRUCT      :: AppData
 // DESCRIPTION :: Details of application data structure in node

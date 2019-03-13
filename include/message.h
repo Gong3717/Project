@@ -267,7 +267,7 @@ enum MessageInfoType
     INFO_TYPE_LtePdcpBufferType,
     INFO_TYPE_LtePhyRrcMeasReport,      // measurement report list
     INFO_TYPE_LtePhyRrcConnReconf,
-
+		INFO_TYPE_XD_MeasurementReport,  //gss xd
     INFO_TYPE_LteStatsDbSduPduInfo,
 
     INFO_TYPE_Dot11nTimerInfo,
@@ -336,7 +336,7 @@ enum MessageInfoType
 
 	//FX EPC 
 	//Added by WLH
-	INFO_TYPE_FxEpcAppContainer
+		INFO_TYPE_FxEpcAppContainer
 
 };
 

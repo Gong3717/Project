@@ -7,6 +7,11 @@
 #include "fx_rrc_config.h"
 //Added by WLH
 #include "fx_common.h"
+//gss xd
+#include "lte_common.h"
+#include "phy_lte.h"
+#include "phy_fx.h"
+////
 #include "layer2_fx_smac.h"
 #include "layer2_fx_slc.h"
 #include "layer2_fx_sac.h"
@@ -20,6 +25,7 @@
 #define RRC_FX_DEFAULT_WAIT_ATTCH_UE_BY_HO_TIME         ( 500*MILLI_SECOND)
 #define RRC_FX_DEFAULT_X2_WAIT_END_MARKER_TIME          ( 200*MILLI_SECOND)
 #define RRC_FX_DEFAULT_S1_WAIT_PATH_SWITCH_REQ_ACK_TIME ( 200*MILLI_SECOND)
+#define RRC_FX_DEFAULT_XD_HANDOVER_TIME                  ( 1*MILLI_SECOND)
 //Added by WLH
 #define FX_LIB_STATION_TYPE_GUARD(node, interfaceIndex, type, typeString) \
     ERROR_Assert(FxLayer2GetStationType(node, interfaceIndex) == type, \
@@ -41,7 +47,8 @@ typedef enum {
 	LAYER3_FX_CONNECTION_WAITING,
 	LAYER3_FX_CONNECTION_CONNECTED,
 	LAYER3_FX_CONNECTION_HANDOVER,
-	LAYER3_FX_CONNECTION_STATUS_NUM
+	LAYER3_FX_CONNECTION_STATUS_NUM,
+	LAYER3_FX_CONNECTION_XDHANDOVER   //gss xd
 } Layer3FxConnectionState;
 
 
@@ -75,7 +82,7 @@ typedef struct struct_connection_info_fx
 	std::map < int, Message* >  mapLayer3Timer;
 
 	// FXHandoverParticipator hoParticipator;    // used ony for handover
-
+	XdHandoverParticipator xdhoParticipator;   //gss xd
 
 	struct_connection_info_fx(Layer3FxConnectionState _state)
 		: state(_state)
@@ -269,4 +276,20 @@ void Layer3FxInitHandoverSchedule(
 	UInt32 interfaceIndex,
 	const NodeInput* nodeInput);
 
+//gss xd
+void Layer3XdHandOverDecision(
+	Node *node,
+	UInt32 interfaceIndex,
+	const fxRnti& targetRnti);
+
+//gss xd
+void Layer3FxReceiveXdHoReq(
+	Node *node,
+	UInt32 interfaceIndex,
+	const XdHandoverParticipator& xdhoParticipator);
+//gss xd
+void Layer3FxReceiveXdHoReqAck(
+	Node *node,
+	UInt32 interfaceIndex,
+	const XdHandoverParticipator& xdhoParticipator);
 #endif

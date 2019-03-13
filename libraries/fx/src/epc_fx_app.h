@@ -7,6 +7,7 @@
 #include "epc_fx_common.h"
 #include "layer3_fx.h"
 #include "layer3_lte.h"  //gss xd
+#include "epc_lte_common.h" //gss xd
 //#include "layer2_fx_sac.h"
 
 #define EPC_FX_APP_CAT_EPC_APP    "EpcApp"
@@ -62,9 +63,8 @@ typedef struct struct_epc_Xd_app_message_argument_ho_req
 typedef struct struct_epc_Xd_app_message_argument_ho_req_ack
 {
 	XdHandoverParticipator xdhoParticipator;
-	FXRrcConnectionReconfiguration fxreconf;    // including moblityControlInfo
-	RrcConnectionReconfiguration reconf;
 } EpcXdAppMessageArgument_HoReqAck;
+
 
 typedef struct struct_epc_FX_app_pair_bearerid_snstatus
 {
@@ -153,24 +153,6 @@ typedef struct struct_epc_FX_app_message_container
 	char value[1];
 } EpcFxAppMessageContainer;
 
-//gss xd
-typedef struct struct_epc_Xd_app_message_container
-{
-	LteRnti src;
-	fxRnti dst;
-	EpcFxMessageType type;
-	int length;
-	char value[1];
-} EpcXdAppMessageContainer;
-//gss xd
-typedef struct struct_epc_Xd_app_message_container1
-{
-	fxRnti src;
-	LteRnti dst;
-	EpcFxMessageType type;
-	int length;
-	char value[1];
-} EpcXdAppMessageContainer1;
 
 // /**
 // FUNCTION   :: EpcFxAppProcessEvent
@@ -209,28 +191,40 @@ EpcFxAppSend(Node* node,
 	int payloadSize,
 	char *payload,
 	int virtualPacketSize = -1);
+
 //gss2019  xd
+//发送星地切换请求确认时调用
 void
 EpcXdAppSend(Node* node,
 	int interfaceIndex,
 	const LteRnti& src,
 	const fxRnti& dst,
-	EpcFxMessageType type,
+	EpcMessageType type,
 	int payloadSize,
 	char *payload,
 	int virtualPacketSize = -1);
 
 //gss2019 xd
+//发送星地切换请求时调用
 void
 EpcXdAppSend(Node* node,
 	int interfaceIndex,
 	const fxRnti& src,
 	const LteRnti& dst,
-	EpcFxMessageType type,
+	EpcMessageType type,
 	int payloadSize,
 	char *payload,
 	int virtualPacketSize = -1);
-
+//gss xd 
+void
+EpcXdAppSendRequried(Node* node,
+	int interfaceIndex,
+	const LteRnti& src,
+	const LteRnti& dst,
+	EpcMessageType type,
+	int payloadSize,
+	char *payload,
+	int virtualPacketSize = -1);
 // /**
 // FUNCTION   :: EpcFxAppCommitToUdp
 // LAYER      :: EPC
@@ -473,26 +467,27 @@ FxAddRouteToForwardingTable(
 	NodeAddress nextHop,
 	int outgoingInterfaceIndex);
 
-//gss2019
+//gss xd
 void EpcXdAppSend_HandoverRequried(
 	Node *node,
 	UInt32 interfaceIndex,
-	const XdHandoverParticipator& xdhoParticipator);
-//gss2019
+	const LteRnti& ueRnti,
+	const LteRnti& srcEnbRnti,
+	Node * ueNode);
+//gss xd
 void EpcXdAppSend_HandoverCommand(
 	Node *node,
 	UInt32 interfaceIndex,
 	const XdHandoverParticipator& xdhoParticipator);
-//gss2019
+//gss xd
 void EpcXdAppSend_HandoverRequest(
 	Node *node,
 	UInt32 interfaceIndex,
 	const XdHandoverParticipator& xdhoParticipator);
-//gss2019
+//gss xd
 void EpcXdAppSend_HandoverRequestAck(
 	Node *node,
 	UInt32 interfaceIndex,
-	const XdHandoverParticipator& xdhoParticipator,
-	const FXRrcConnectionReconfiguration& fxreconf);
+	const XdHandoverParticipator& xdhoParticipator);
 #endif  // _EPC_FX_APP_H_
 

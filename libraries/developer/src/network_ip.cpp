@@ -24316,3 +24316,34 @@ void HandleStatsDBIpMulticastNetSummaryTableInsertion(Node* node)
     }
 }
 #endif
+
+//gss
+//--------------------------------------------------------------------------
+// API              :: NetworkIpCheckIfAddressLoopBack
+// LAYER            :: Network
+// PURPOSE          :: Checks whether an address is loopback address or not
+// PARAMETERS       ::
+// + node           : Node*   : node
+// + address        : Address : address which need to be checked
+// RETURN           :: bool  : TRUE : if address is loopback
+//                             FALSE : if address is not loopback
+//--------------------------------------------------------------------------
+
+
+//bool
+//NetworkIpCheckIfAddressLoopBack(Node* node, Address address)
+//{
+//	bool loopback = FALSE;
+//	if (address.networkType == NETWORK_IPV4 &&
+//		NetworkIpIsLoopbackInterfaceAddress(address.interfaceAddr.ipv4))
+//	{
+//		loopback = TRUE;
+//	}
+//	if (address.networkType == NETWORK_IPV6 &&
+//		Ipv6IsLoopbackAddress(node, address.interfaceAddr.ipv6))
+//	{
+//		loopback = TRUE;
+//	}
+//	return (loopback);
+//}
+//

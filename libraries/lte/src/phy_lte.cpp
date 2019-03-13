@@ -40,6 +40,9 @@
 #include "lte_common.h"
 #include "layer3_lte_filtering.h"
 #include "layer2_lte_rlc.h"
+#include "epc_lte.h"    //gss xd
+#include "epc_fx_app.h"//gss xd
+#include "network_ip.h" //gss xd
 
 #ifdef ADDON_DB
 #include "stats_phy.h"
@@ -569,7 +572,8 @@ void PhyLteDebugOutputRxMsgInfoList(Node* node,
 }
 
 #endif
-
+//gss xd
+static void XdUpadateUeRoute(Node* node, int interfaceIndex, const LteRnti& oppositeRnti);
 // /**
 // FUNCTION   :: PhyLteCreateRxMsgInfo
 // LAYER      :: PHY
@@ -5192,6 +5196,30 @@ BOOL PhyLteSetRrcMeasReportInfo(Node* node, int phyIndex, Message* msg)
     }
 }
 
+//gss xd
+BOOL PhyLteSetXdMeasReportInfo(Node* node, int phyIndex, Message* msg) {
+	PhyData* thisPhy = node->phyData[phyIndex];
+	PhyDataLte* phyLte = (PhyDataLte *)thisPhy->phyVar;
+	// there are measurement report to send
+	if (phyLte->maxTxPower_dBm != 0) {
+		// allocate info
+		XdMeasurementReport* xdmr = (XdMeasurementReport*)MESSAGE_AppendInfo(node,
+			msg,
+			sizeof(XdMeasurementReport),
+			(unsigned short)INFO_TYPE_XD_MeasurementReport);
+		xdmr->node = node;
+		xdmr->ueRnti = LteLayer2GetRnti(node, phyIndex);
+		xdmr->txPower_dBm = 230;
+		xdmr->phylte = phyLte;
+		return TRUE;
+	}
+	else {
+		return FALSE;
+	}
+	//return TRUE;
+	
+}
+
 // /**
 // FUNCTION   :: PhyLteGetMessageMeasurementReportInfo
 // LAYER      :: PHY
@@ -6681,6 +6709,25 @@ BOOL PhyLteGetMessageControlInfo(Node* node,
                             node->phyData[phyIndex]->macInterfaceIndex,
                             rrcSetupCompleteinfo.enbRnti,
                             txRnti);
+			//gss xd test
+			//EpcData* epc = EpcLteGetEpcData(node);
+
+			//gss xd 原Enb收到测量报告并发送星地切换需求指令
+			XdMeasurementReport* xdmr = (XdMeasurementReport*)MESSAGE_ReturnInfo(msg, (unsigned short)INFO_TYPE_XD_MeasurementReport);
+			if (xdmr != NULL)
+			{
+				Node *ueNode = xdmr->node;
+				LteRnti ueRnti = xdmr->ueRnti;
+				double fxTxPower = xdmr->txPower_dBm;
+				double lteTxPower = xdmr->phylte->maxTxPower_dBm;
+				if (lteTxPower < fxTxPower)
+				{
+					//发送星地切换需求指令
+					//EpcData* epc = EpcLteGetEpcData(node);
+					EpcXdAppSend_HandoverRequried(node, interfaceIndex,ueRnti,LteLayer2GetRnti(node, interfaceIndex),ueNode);
+					//XdUpadateUeRoute(ueNode, 1, LteLayer2GetRnti(node, interfaceIndex)); //更新用户的路由表切换到FX网络
+		        }
+		     }
 
 #ifdef LTE_LIB_LOG
             lte::LteLog::InfoFormat(
@@ -6808,7 +6855,23 @@ BOOL PhyLteGetMessageControlInfo(Node* node,
             Layer3LteIFHPNotifyMeasurementReportReceived(
                 node, interfaceIndex, srcRnti, &measurementReport);
         }
-
+		//gss xd 原Enb收到测量报告并发送星地切换需求指令
+		//XdMeasurementReport* xdmr = (XdMeasurementReport*)MESSAGE_ReturnInfo(msg, (unsigned short)INFO_TYPE_XD_MeasurementReport);
+		//if (xdmr != NULL)
+		//{
+		//	Node *ueNode = xdmr->node;
+		//	LteRnti ueRnti = xdmr->ueRnti;
+		//	double fxTxPower = xdmr->txPower_dBm;
+		//	double lteTxPower = xdmr->phylte->maxTxPower_dBm;
+		//	if (lteTxPower < fxTxPower)
+		//	{
+		//		//发送星地切换需求指令
+		//		//EpcData* epc = EpcLteGetEpcData(node);
+		//		EpcXdAppSend_HandoverRequried(node, interfaceIndex,ueRnti,LteLayer2GetRnti(node, interfaceIndex),ueNode);
+		//		//XdUpadateUeRoute(ueNode, 1, LteLayer2GetRnti(node, interfaceIndex)); //更新用户的路由表切换到FX网络
+		//       }
+		//    }
+		
     }
     // Control signals to check on SignalEnd timing.
     else
@@ -7315,7 +7378,8 @@ void PhyLteSetPropagationDelay(Node* node,
 
     phyLte->propagationDelay =
         *(node->currentTime) - propTxInfo->txStartTime;
-
+	//gss xd test
+	double temp = phyLte->propagationDelay / (double)SECOND;
 #if LTE_LAYER2_DEFAULT_USE_SPECIFIED_DELAY
     phyLte->propagationDelay += LTE_LAYER2_DEFAULT_DELAY_UNTIL_AIRBORN;
 #endif
@@ -8636,6 +8700,16 @@ void PhyLteSignalArrivalFromChannel(Node* node,
 
     newRxMsgInfo->rxPower_mW =
         NON_DB(lteTxInfo->txPower_dBm - pathloss_dB);
+
+	//gss xd 记录FX的接收机功率 即RSS，该值跟YH与卫星的位置有关
+	if (phyLte->stationType == LTE_STATION_TYPE_UE) {
+		double time = getSimTime(node) / (double)SECOND;
+		//char clockStr[MAX_CLOCK_STRING_LENGTH];
+		//ctoa((getSimTime(node) / SECOND), clockStr);
+		ofstream outfile("LTE_RSS.txt", ofstream::app);
+		outfile << time << "  " << newRxMsgInfo->rxPower_mW << endl;
+		outfile.close();
+	}
 
     newRxMsgInfo->propTxInfo = *propTxInfo; // Copy
     newRxMsgInfo->lteTxInfo = *lteTxInfo;   // Copy
@@ -10233,6 +10307,11 @@ void PhyLteStartTransmittingSignal(Node* node,
             TransportFlag =
                 (TransportFlag
                  | PhyLteSetRrcMeasReportInfo(node, phyIndex, packet));
+
+			//gss xd
+			TransportFlag =
+				(TransportFlag
+					| PhyLteSetXdMeasReportInfo(node, phyIndex, packet));
         }
     }
     else if (phyLte->stationType == LTE_STATION_TYPE_ENB)
@@ -10276,6 +10355,10 @@ void PhyLteStartTransmittingSignal(Node* node,
             TransportFlag =
                 (TransportFlag
                  | PhyLteSetRrcConnReconfInfo(node, phyIndex, packet));
+			//gss xd
+			/*TransportFlag =
+				(TransportFlag
+					| PhyLteSetXdMeasReportInfo(node, phyIndex, packet));*/
         }
 
     }
@@ -12197,3 +12280,30 @@ void PhyLteNotifyPacketDropForMsgInRxPackedMsg(
     }
 }
 #endif // ADDON_DB
+
+//gss xd
+static void XdUpadateUeRoute(Node* node, int interfaceIndex, const LteRnti& oppositeRnti) {
+	NodeAddress destAddr;
+	NodeAddress destMask;
+	NodeAddress nextHop;
+	int outgoingInterfaceIndex;
+	LteStationType stationType =
+		LteLayer2GetStationType(node, interfaceIndex);
+	if (stationType == LTE_STATION_TYPE_UE) {
+		destAddr = 0;   // default route
+		destMask = 0;   // default route
+		nextHop = 3187672066;
+		outgoingInterfaceIndex = 0;
+	}
+	NetworkRoutingProtocolType type = ROUTING_PROTOCOL_STATIC;
+	int cost = 0;
+
+	NetworkUpdateForwardingTable(
+		node,
+		destAddr,
+		destMask,
+		nextHop,
+		outgoingInterfaceIndex,
+		cost,
+		type);
+}

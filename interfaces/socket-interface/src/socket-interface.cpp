@@ -8831,6 +8831,7 @@ void SocketInterface_BootStrap(int argc, char * argv [],
             fileString,
             MAX_STRING_LENGTH);
         simProps->configFileName[MAX_STRING_LENGTH - 1] = '\0';
+
     }
 
     HandleParserConfiguration(argc, argv, simProps);
@@ -8843,10 +8844,10 @@ void SocketInterface_BootStrap(int argc, char * argv [],
         commandLine->push_back(argv[thisArg]);
     }
 
-    PARTITION_ClientStateSet(
-        partitionData,
-        "CesCommandLine",
-        (void*) commandLine);
+	PARTITION_ClientStateSet(
+		partitionData,
+		"CesCommandLine",
+		(void*) commandLine);
 }
 
 SocketInterface_ModeType SocketInterface_GetModeType(EXTERNAL_Interface* iface)

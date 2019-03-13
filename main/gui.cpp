@@ -64,7 +64,7 @@ typedef int ssize_t;
 
 #include "WallClock.h"
 
-#ifdef HLA_INTERFACE
+#ifdef HLA_INTERFACE  
 #include "hla.h"
 #endif /* HLA_INTERFACE */
 

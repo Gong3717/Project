@@ -1476,15 +1476,15 @@ void SlcFxDeliverPduToSmac(Node * node, int interfaceIndex, const fxRnti& dstRnt
 
 		int totalPktsize = 0, n=1;
 		// 把SLC实体发送队列中的包转移到sduList里
-		ofstream write;
-		write.open("text1.txt", ios::app);
+		/*ofstream write;
+		write.open("text1.txt", ios::app);*/
 		
 		while (txBuffer->size() > 0)
 		{
 			Message* thisMsg = (*txBuffer->begin()).message;
 			int thisPktSize = MESSAGE_ReturnPacketSize(thisMsg);
 			totalPktsize += thisPktSize;
-			write << thisPktSize << "   "<< amEntity->txBufSize <<endl;
+			/*write << thisPktSize << "   "<< amEntity->txBufSize <<endl;*/
 
 			// 如果这个包放不下了就不再继续
 			if (totalPktsize > tbSize - 4 - 3 * n++) break;
@@ -1493,7 +1493,7 @@ void SlcFxDeliverPduToSmac(Node * node, int interfaceIndex, const fxRnti& dstRnt
 			txBuffer->erase(txBuffer->begin());
 			amEntity->txBufSize -= thisPktSize;		
 		}
-		write.close();
+		//write.close();
 		return;
 	}
 	default:

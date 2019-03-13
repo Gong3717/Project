@@ -34,6 +34,8 @@
 #include "layer3_lte_filtering.h"
 #include "layer3_lte.h"
 #include "epc_lte.h"
+//gss xd
+#include "epc_fx_app.h"
 
 #ifdef LTE_LIB_LOG
 #include "log_lte.h"
@@ -1623,6 +1625,12 @@ void Layer3LteProcessRrcConnectedTimerExpired(
     const LteRnti& enbRnti =
         Layer3LteGetRandomAccessingEnb(node, interfaceIndex);
 
+	//gss xd
+	/*Layer3DataFx* layer3Datafx =
+		FxLayer2GetLayer3DataFx(node, interfaceIndex);
+	layer3Datafx->connectionInfoMap.begin();*/
+
+
 #ifdef LTE_LIB_LOG
     lte::LteLog::InfoFormat(node, interfaceIndex,
         LTE_STRING_LAYER_TYPE_RRC,
@@ -2909,8 +2917,8 @@ void Layer3LteIFHPNotifyMeasurementReportReceived(
 #endif
 
     // set timer TRELOCprep
-    Layer3LteSetTimerForRrc(node, interfaceIndex, hoParticipator.ueRnti,
-        MSG_MAC_LTE_RELOCprep, RRC_LTE_DEFAULT_RELOC_PREP_TIME);
+   Layer3LteSetTimerForRrc(node, interfaceIndex, hoParticipator.ueRnti,
+		MSG_MAC_LTE_RELOCprep, RRC_LTE_DEFAULT_RELOC_PREP_TIME);
 }
 
 // /**
@@ -3210,6 +3218,31 @@ void Layer3LteReceiveHoReqAck(
     epc->statData.numHandoverRequestAckReceived++;
 }
 
+//gss xd
+void Layer3LteReceiveXdHoRequried(
+	Node *node,
+	UInt32 interfaceIndex,
+	const XdHandoverParticipator& xdhoParticipator) {
+
+	//EpcXdAppSend_HandoverCommand(node,interfaceIndex,xdhoParticipator);
+	EpcXdAppSend_HandoverRequest(node, interfaceIndex, xdhoParticipator);
+	// update stats
+	EpcData* epc = EpcLteGetEpcData(node);
+	epc->statData.numXdHandoverRequiredReceived++;
+	cout << "node" << node->nodeId << " : recevie xd handover require at " << getSimTime(node) / (double)SECOND << " second." << endl;
+}
+
+//gss xd
+void Layer3LteReceiveXdHoCommand(
+	Node *node,
+	UInt32 interfaceIndex,
+	const XdHandoverParticipator& xdhoParticipator) {
+
+	// update stats
+	EpcData* epc = EpcLteGetEpcData(node);
+	epc->statData.numXdHandoverCommandReceived++;
+	cout << "node" << node->nodeId << " : receive xd handover command at " << getSimTime(node) / (double)SECOND << " second." << endl;
+}
 // /**
 // FUNCTION   :: Layer3LteSendSnStatusTransfer
 // LAYER      :: RRC

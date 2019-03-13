@@ -17,6 +17,79 @@ void EpcLtePrintStat(
     if (epc)
     {
         char buf[MAX_STRING_LENGTH] = {0};
+		//gss xd
+		sprintf(buf, "Number of xdhandover requried sent = %u",
+			epc->statData.numXdHandoverRequiredSent);
+		IO_PrintStat(node,
+			"application",
+			"LTE handover",
+			ANY_DEST,
+			-1,
+			buf);
+		//gss xd
+		sprintf(buf, "Number of xdhandover requried received = %u",
+			epc->statData.numXdHandoverRequiredReceived);
+		IO_PrintStat(node,
+			"application",
+			"LTE handover",
+			ANY_DEST,
+			-1,
+			buf);
+		//gss xd
+		sprintf(buf, "Number of xdhandover request sent = %u",
+			epc->statData.numXdHandoverRequestSent);
+		IO_PrintStat(node,
+			"application",
+			"LTE handover",
+			ANY_DEST,
+			-1,
+			buf);
+		//gss xd
+		sprintf(buf, "Number of xdhandover request received = %u",
+			epc->statData.numXdHandoverRequestReceived);
+		IO_PrintStat(node,
+			"application",
+			"LTE handover",
+			ANY_DEST,
+			-1,
+			buf);
+		//gss xd
+		sprintf(buf, "Number of xdhandover request acknowlegment sent = %u",
+			epc->statData.numXdHandoverRequestAckSent);
+		IO_PrintStat(node,
+			"application",
+			"LTE handover",
+			ANY_DEST,
+			-1,
+			buf);
+		//gss xd
+		sprintf(buf, "Number of xdhandover request acknowlegment received = %u",
+			epc->statData.numXdHandoverRequestAckReceived);
+		IO_PrintStat(node,
+			"application",
+			"LTE handover",
+			ANY_DEST,
+			-1,
+			buf);
+		//gss xd
+		sprintf(buf, "Number of xdhandover commmand sent = %u",
+			epc->statData.numXdHandoverCommandSent);
+		IO_PrintStat(node,
+			"application",
+			"LTE handover",
+			ANY_DEST,
+			-1,
+			buf);
+		//gss xd
+		sprintf(buf, "Number of xdhandover command received = %u",
+			epc->statData.numXdHandoverCommandReceived);
+		IO_PrintStat(node,
+			"application",
+			"LTE handover",
+			ANY_DEST,
+			-1,
+			buf);
+
         sprintf(buf, "Number of handover request sent = %u",
             epc->statData.numHandoverRequestSent);
             IO_PrintStat(node,

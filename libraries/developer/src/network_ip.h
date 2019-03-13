@@ -6606,4 +6606,8 @@ void NetworkIpAddPacketSentToMacDataPoints(
 
 BOOL //inline
 IsMyPacket(Node *node, NodeAddress destAddress);
+
+////gss
+//bool
+//NetworkIpCheckIfAddressLoopBack(Node* node, Address address);
 #endif // _IP_H_

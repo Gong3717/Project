@@ -50,6 +50,17 @@ typedef struct struct_epc_lte_app_message_argument_ho_req_ack
     RrcConnectionReconfiguration reconf;    // including moblityControlInfo
 } EpcLteAppMessageArgument_HoReqAck;
 
+//gss xd
+typedef struct struct_epc_xd_app_message_argument_ho_requried
+{
+	XdHandoverParticipator xdhoParticipator;
+} EpcXdAppMessageArgument_HoRequried;
+//gss xd
+typedef struct struct_epc_xd_app_message_argument_ho_command
+{
+	XdHandoverParticipator xdhoParticipator;
+} EpcXdAppMessageArgument_HoCommand;
+
 typedef struct struct_epc_lte_app_pair_bearerid_snstatus
 {
     int bearerId;
@@ -132,6 +143,7 @@ typedef struct struct_epc_lte_app_message_container
 {
     LteRnti src;
     LteRnti dst;
+	fxRnti tgt; //gss xd
     EpcMessageType type;
     int length;
     char value[1];
@@ -174,6 +186,17 @@ EpcLteAppSend(Node* node,
               int payloadSize,
               char *payload,
               int virtualPacketSize = -1);
+
+//gss xd
+void
+EpcLteAppSendXdCommand(Node* node,
+	int interfaceIndex,
+	const LteRnti& src,
+	const LteRnti& dst,
+	EpcMessageType type,
+	int payloadSize,
+	char *payload,
+	int virtualPacketSize = -1);
 
 // /**
 // FUNCTION   :: EpcLteAppCommitToUdp
@@ -403,5 +426,8 @@ NodeAddress EpcLteAppGetNodeAddressOnEpcSubnet(
 // **/
 BOOL EpcLteAppIsNodeOnTheSameEpcSubnet(
     Node* node, NodeAddress targetNodeId);
+
+//gss xd
+void XdUpadateUeRoute(Node* node, int interfaceIndex);
 
 #endif  // _EPC_LTE_APP_H_

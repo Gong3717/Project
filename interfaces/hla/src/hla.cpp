@@ -107,7 +107,7 @@ HlaInitNodes(EXTERNAL_Interface* iface, NodeInput* nodeInput)
     cout << endl;
 
     // The order of the three function calls below should NOT be changed.
-
+#ifdef CoSimSystem
     HlaReadEntitiesFile(partitionData, ifaceData, nodeInput);
     HlaReadRadiosFile(partitionData, ifaceData, nodeInput);
     HlaReadNetworksFile(partitionData, ifaceData, nodeInput);
@@ -117,7 +117,7 @@ HlaInitNodes(EXTERNAL_Interface* iface, NodeInput* nodeInput)
     HlaMapHierarchyIds(ifaceData);
 
     HlaInitMessenger(partitionData, nodeInput);
-
+#endif
     HlaCreateFederation(ifaceData);
     HlaSleep(1);
     HlaJoinFederation(ifaceData);
@@ -125,9 +125,13 @@ HlaInitNodes(EXTERNAL_Interface* iface, NodeInput* nodeInput)
     HlaGetObjectAndInteractionClassHandles(ifaceData);
     HlaSubscribeAndPublish(ifaceData);
 
-    HlaWaitForFirstObjectDiscovery(ifaceData);
+   // HlaWaitForFirstObjectDiscovery(ifaceData);
     cout.precision(6);
+#ifdef CoSimSystem
 
+	HlaInterfaceTimerNotificationSet(partitionData, 2 * SECOND);//业务统计数据发送开始时间
+
+#endif
     if (ifaceData->m_hla->hlaDynamicStats)
     {
         if (ifaceData->m_hla->sendNodeIdDescriptions)
@@ -235,13 +239,26 @@ HlaProcessEvent(Node* node, Message* msg)
         case MSG_EXTERNAL_HLA_ChangeMaxTxPower:
             HlaAppProcessChangeMaxTxPowerEvent(node, msg);
             break;
+//gss xd
+#ifdef CoSimSystem
+		case MSG_EXTERNAL_HLA_SendMeticNotification:
+			HlaInterfaceSendAppSingleTraffic(node, msg, ifaceData);
+			break;
+#endif
         default:
             assert(0);
 
         // Sent from HlaProcessSendRtssEvent of non-0 partitions
     }
-
-    MESSAGE_Free(node, msg);
+#ifdef CoSimSystem
+	if (MESSAGE_GetEvent(msg) != MSG_EXTERNAL_HLA_SendMeticNotification)
+{
+#endif
+		MESSAGE_Free(node, msg);
+#ifdef CoSimSystem
+	}
+   // MESSAGE_Free(node, msg);
+#endif   
 }
 
 void
@@ -256,11 +273,11 @@ HlaFinalize(EXTERNAL_Interface* iface)
         HlaFreeFederateAmbassador(ifaceData);
         HlaFreeRtiAmbassador(ifaceData);
     }
-
+#ifdef CoSimSystem  //gss
     HlaFreeEntities(ifaceData);
     HlaFreeRadios(ifaceData);
     HlaFreeNetworks(ifaceData);
-
+#endif              //gss
     HlaFreeHla(ifaceData);
 }
 

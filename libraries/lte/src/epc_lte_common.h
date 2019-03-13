@@ -34,6 +34,8 @@ typedef enum
     EPC_MESSAGE_TYPE_HO_PREPARATION_FAILURE,
 	EPC_XD_MESSAGE_TYPE_HANDOVER_REQURIED, //gss xd
 	EPC_XD_MESSAGE_TYPE_HANDOVER_COMMAND, //gss xd
+	EPC_XD_MESSAGE_TYPE_HANDOVER_REQUEST,         //gss xd
+	EPC_XD_MESSAGE_TYPE_HANDOVER_REQUEST_ACKNOWLEDGE,   //gss xd
 } EpcMessageType;
 
 typedef std::set<LteRnti> EpcLteUeList;
@@ -44,8 +46,14 @@ typedef std::map<LteRnti, EpcLteUeList> EpcLteLocationInfo;
 // DESCRIPTION :: Statistics Data
 // **/
 typedef struct struct_epc_stat_data{
-	UInt32 numHandoverRequiredSent; //gss xd
-	UInt32 numHandoverCommandSent;  //gss xd
+	UInt32 numXdHandoverRequiredSent; //gss xd
+	UInt32 numXdHandoverRequiredReceived; //gss xd
+	UInt32 numXdHandoverCommandSent;  //gss xd
+	UInt32 numXdHandoverCommandReceived;  //gss xd
+	UInt32 numXdHandoverRequestSent;      //gss xd
+	UInt32 numXdHandoverRequestReceived;  //gss xd
+	UInt32 numXdHandoverRequestAckSent;  //gss xd
+	UInt32 numXdHandoverRequestAckReceived;//gss xd
     UInt32 numHandoverRequestSent;
     UInt32 numHandoverRequestReceived;
     UInt32 numHandoverRequestAckSent;
@@ -64,6 +72,14 @@ typedef struct struct_epc_stat_data{
     UInt32 numHandoversFailed;
 public:
     struct_epc_stat_data() :
+	  numXdHandoverRequiredSent(0), //gss xd
+	  numXdHandoverRequiredReceived(0),
+	  numXdHandoverCommandSent(0),  //gss xd
+	  numXdHandoverCommandReceived(0),
+	  numXdHandoverRequestSent(0),     //gss xd
+	  numXdHandoverRequestReceived(0),  //gss xd
+	  numXdHandoverRequestAckSent(0),  //gss xd
+	  numXdHandoverRequestAckReceived(0),//gss xd
       numHandoverRequestSent(0),
       numHandoverRequestReceived(0),
       numHandoverRequestAckSent(0),

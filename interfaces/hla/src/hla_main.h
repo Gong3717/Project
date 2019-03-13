@@ -18,6 +18,7 @@
 #ifndef HLA_MAIN_H
 #define HLA_MAIN_H
 
+#define CoSimSystem
 struct HlaInterfaceData;
 
 const unsigned g_hlaMaxDstEntityIdsInTimeoutNotification
@@ -225,4 +226,9 @@ void
 HlaSendCommentIxn(HlaInterfaceData * ifaceData,
     const HlaCommentIxnInfo& commentIxnInfo);
 
+//gss xd
+#ifdef CoSimSystem
+void HlaInterfaceTimerNotificationSet(PartitionData* partitionData, clocktype delay);
+void HlaInterfaceSendAppSingleTraffic(Node* node, Message* msg, HlaInterfaceData * ifaceData);
+#endif
 #endif /* HLA_MAIN_H */

@@ -26,6 +26,8 @@
 #include "layer2_lte_rlc.h"
 #include "layer2_lte_pdcp.h"
 #include "lte_rrc_config.h"
+//gss xd 33
+#include "fx_common.h"
 
 //--------------------------------------------------------------------------
 // Define
@@ -833,6 +835,17 @@ void Layer3LteReceiveHoReqAck(
                     const HandoverParticipator& hoParticipator,
                     const RrcConnectionReconfiguration& reconf);
 
+//gss xd
+void Layer3LteReceiveXdHoRequried(
+	Node *node,
+	UInt32 interfaceIndex,
+	const XdHandoverParticipator& xdhoParticipator);
+
+//gss xd
+void Layer3LteReceiveXdHoCommand(
+	Node *node,
+	UInt32 interfaceIndex,
+	const XdHandoverParticipator& xdhoParticipator);
 // /**
 // FUNCTION   :: Layer3LteSendSnStatusTransfer
 // LAYER      :: RRC

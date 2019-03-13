@@ -596,6 +596,9 @@ enum
     MSG_EXTERNAL_DIS_HierarchyMobility         = 1900,
     MSG_EXTERNAL_DIS_ChangeMaxTxPower          = 1901,
 
+	MSG_EXTERNAL_HLA_SendMeticNotification,    //CoSimSystem gss xd  
+  
+
     /* FCS data structure */
     MSG_BoeingFcsSetSlaveSlot,
     MSG_BoeingFcsDnsUpdate,
@@ -1093,6 +1096,7 @@ enum
 	MSG_SAC_FX_DelayedSacSdu,
 
 	MSG_RRC_FX_HandoverScheduleTimerExpired,
+		MSG_RRC_FX_XdHandoverScheduleTimerExpired,
 
 
 	//Added by WLH

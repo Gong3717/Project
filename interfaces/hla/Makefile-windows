@@ -1,11 +1,13 @@
 include ../interfaces/hla/Makefile-common
 
 !IFNDEF RTI_HOME
+RTI_HOME = D:\MAK\makRti4.3
 !ERROR You must set the environment variable RTI_HOME to the RTI installation directory.
 !ENDIF
 
 !IFNDEF RTI_INCLUDE_DIR
-RTI_INCLUDE_DIR = $(RTI_HOME)\include
+#RTI_INCLUDE_DIR = $(RTI_HOME)\include
+RTI_INCLUDE_DIR = D:\MAK\makRti4.3\include
 !ENDIF
 
 !IF !EXISTS( $(RTI_INCLUDE_DIR) )
@@ -15,7 +17,8 @@ RTI include files.
 !ENDIF
 
 !IFNDEF RTI_LIB_DIR
-RTI_LIB_DIR = $(RTI_HOME)\lib
+#RTI_LIB_DIR = $(RTI_HOME)\lib
+RTI_LIB_DIR = D:\MAK\makRti4.3\lib
 !ENDIF
 
 !IF !EXISTS( $(RTI_LIB_DIR) )

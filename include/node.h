@@ -193,6 +193,9 @@ struct Node {
 
     int ifidx();
 
+	//gss xd
+	//clocktype getNodeTime();
+
 #ifdef WIRELESS_LIB
     Battery*        battery;
     float*          hwTable;

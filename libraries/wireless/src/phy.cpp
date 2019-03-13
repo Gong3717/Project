@@ -3811,6 +3811,12 @@ void PHY_GetTransmitPower(
             break;
         }
 #endif // LTE_LIB
+		//gss xd
+		case PHY_FX:
+		{
+			*txPower_mW = 30000;
+			break;
+		}
         default: {
             ERROR_ReportError("Unknown or disabled PHY model\n");
         }

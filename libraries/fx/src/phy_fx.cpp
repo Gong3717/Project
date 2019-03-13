@@ -12,8 +12,10 @@
 
 #include "phy_fx.h"
 #include "layer2_fx.h"
-
-
+//gss xd
+#include <fstream>
+#include<iostream>
+#include <set>
 
 
 static
@@ -375,6 +377,8 @@ BOOL PhyFxSetForwardLinkControlInfoAtXG(Node* node, int phyIndex, Message* packe
 	// 是否有RRCConnectionReconfiguration报文
 	transmissonFlag = transmissonFlag | PhySphySetRrcconnectionReconfigurationInfoAtXG(node, phyIndex, packet);
 
+	
+
 	return transmissonFlag;
 }
 
@@ -397,7 +401,7 @@ BOOL PhyFxSetBackwardLinkControlInfoAtYH(Node* node, int phyIndex, Message* pack
 
 	// 是否有RRCConnectionReconfigurationComplete报文
 	transmissonFlag = transmissonFlag | PhySphySetRrcConnectionReconfigurationCompleteAtYH(node, phyIndex, packet);
-
+	
 	return transmissonFlag;
 }
 
@@ -511,6 +515,7 @@ void PhySphyHandleMessageControlInfo(Node* node,
 			
 			cout << "node" << node->nodeId << " : change the uplink and downlink channel at " << getSimTime(node) / (double)SECOND << " second." << endl;
 		}
+		
 	}
 
 	// 反向
@@ -980,6 +985,29 @@ void PhySphySignalArrivalFromChannel(
 	double rxPowerInOmnimW
 		= (double)NON_DB(antennaGain + propRxInfo->rxPower_dBm);
 
+	//gss xd 记录FX的接收机功率 即RSS，该值跟YH与卫星的位置有关
+	if (phy_sphy->stationType == FX_STATION_TYPE_YH) {
+		//char clockStr[MAX_CLOCK_STRING_LENGTH];
+		//ctoa((getSimTime(node) / SECOND), clockStr);
+		/*double time = getSimTime(node) / SECOND;
+			set<Fx_Rss>s;
+			Fx_Rss a;
+			a.time = time;
+			a.rxPower = rxPowerInOmnimW;
+			s.insert(a);
+			ofstream outfile("FX_RSS.txt", ofstream::app);
+			set<Fx_Rss>::iterator it;
+			for (it = s.begin(); it != s.end(); it++) {
+				outfile << (*it).time << "  " << (*it).rxPower << endl;
+			}
+			outfile.close();*/
+		double time = getSimTime(node) /SECOND;
+		ofstream outfile("FX_RSS.txt", ofstream::app);
+		outfile << time << ',' << rxPowerInOmnimW << endl;
+		outfile.close();
+	}
+		
+	
 	// calculate the interference power
 	double rxPowermW(0);
 	double interferencePowermW(0);
@@ -1024,6 +1052,7 @@ void PhySphySignalArrivalFromChannel(
 	{
 		PhyFxTxInfo* txInfo = (PhyFxTxInfo*)MESSAGE_ReturnInfo(propRxInfo->txMsg, (unsigned short)INFO_TYPE_FxPhyTxInfo);
 		phy_sphy->propagationDelay = getSimTime(node) - txInfo->Txtime;
+		double temp = phy_sphy->propagationDelay / (double)SECOND;
 		phy_sphy->lastSignalArrival = getSimTime(node);
 	}
 }

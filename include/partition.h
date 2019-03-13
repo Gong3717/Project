@@ -201,6 +201,9 @@ class RecordReplayInterface;
 // DESCRIPTION :: Contains global information for this partition.
 // **/
 struct PartitionData {
+    //gss xd
+	//clocktype   m_theCurrentTime;
+
     int partitionId;        // Identifier for this partition
     int numPartitions;
     D_Int32 numNodes;       // Number of nodes in the entire simulation.
@@ -430,6 +433,8 @@ struct PartitionData {
 
     // Return TRUE if the simulation is running in parallel
     BOOL isRunningInParallel() { return numPartitions > 1; }
+
+	//clocktype getGlobalTime() { return theCurrentTime; }   //gss xd
 
 #ifdef INTERFACE_JNE_VMF
     void* vmf_nexus;

@@ -43,6 +43,8 @@
 #include "transport_rtp.h"
 #include "multimedia_sip.h"
 
+//#include "network_ip.h"  //gss
+
 #ifdef ADDON_DB
 #include "db.h"
 #include "dbapi.h"
@@ -1725,6 +1727,12 @@ VoipHostData* VoipInitiatorCreateNewSession(
                                 clockStr);
         printf("    packetizationInterval = %s\n", clockStr);
     }
+	
+	//voipInitiator->destNodeId = ANY_NODEID;// gss
+	//voipInitiator->clientInterfaceIndex = ANY_INTERFACE;
+	//voipInitiator->destInterfaceIndex = ANY_INTERFACE;
+	//voipInitiator->proxyNodeId = ANY_NODEID;
+	//voipInitiator->proxyInterfaceIndex = ANY_INTERFACE;
 
     APP_RegisterNewApp(node, APP_VOIP_CALL_INITIATOR, voipInitiator);
     if (DEBUG_VOIP)
@@ -1945,7 +1953,7 @@ unsigned short VoipCallInitiatorInit(
             node->nodeId);
         ERROR_ReportError(error);
     }
-
+	NodeId destNodeId = MAPPING_GetNodeIdFromInterfaceAddress(node, destAddr);  //gss
     voipInitiator = VoipInitiatorCreateNewSession(
                         node,
                         srcAddr,
@@ -1974,7 +1982,22 @@ unsigned short VoipCallInitiatorInit(
     timerData->srcAddr = voipInitiator->localAddr;
 
     MESSAGE_Send(node, newMsg, startTime);
-
+	//gss
+	/*AppVoipClientAddAddressInformation(node, voipInitiator, voipInitiator->remoteAddr);
+	AppMultimedia* multimedia = node->appData.multimedia;
+	if (multimedia && multimedia->sigType == SIG_TYPE_SIP)
+	{
+		SipData* sip;
+		sip = (SipData*)multimedia->sigPtr;
+		if (sip && sip->SipGetCallModel() == SipProxyRouted)
+		{
+			AppVoipClientAddAddressInformation(node,
+				voipInitiator,
+				sip->SipGetProxyIp(),
+				TRUE);
+		}
+	}*/
+	//
     return voipInitiator->initiatorPort;
 }
 
@@ -2316,7 +2339,6 @@ VoipHostData* VoipReceiverCreateNewSession(
         printf("    localAddr = %s\n", localAddr);
         printf("    remoteAddr = %s\n", remoteAddr);
     }
-
     APP_RegisterNewApp(node, APP_VOIP_CALL_RECEIVER, voipReceiver);
     if (DEBUG_VOIP_Err)
     {
@@ -2381,6 +2403,8 @@ void VoipCallReceiverInit(
 
         voipReceiver->packetizationInterval =
                 callListEntry->packetizationInterval;
+		//gss
+		//AppVoipClientAddAddressInformation(node, voipReceiver, voipReceiver->remoteAddr);
     }
 }
 
@@ -2799,3 +2823,70 @@ void VOIPSendRtpInitiateNewSession(Node* node,
 
     MESSAGE_Send(node, newMsg, (clocktype) 0);
 }
+
+//gss 
+//---------------------------------------------------------------------------
+// FUNCTION             : AppVoipClientAddAddressInformation.
+// PURPOSE              : store client interface index, destination 
+//                        interface index destination node id to get the 
+//                        correct address when application starts
+// PARAMETERS:
+// + node               : Node*             : pointer to the node
+// + clientPtr          : VoipHostData* : pointer to client data
+// + remoteAddr         : NodeAddress   : Remote proxy/Destn addr
+// + isProxy            : bool : flag to check if proxy d/b needs an update
+// RETRUN               : NONE
+//---------------------------------------------------------------------------
+//void
+//AppVoipClientAddAddressInformation(Node* node,
+//	VoipHostData* clientPtr,
+//	NodeAddress remoteAddr,
+//	bool isProxy)
+//{
+//	// Store the client and destination interface index such that we can get
+//	// the correct address when the application starts
+//	NodeId destNodeId = MAPPING_GetNodeIdFromInterfaceAddress(
+//		node,
+//		remoteAddr);
+//
+//	if (destNodeId != INVALID_MAPPING)
+//	{
+//		if (isProxy)
+//		{
+//			clientPtr->proxyNodeId = destNodeId;
+//			clientPtr->proxyInterfaceIndex =
+//				(Int16)MAPPING_GetInterfaceIdForDestAddress(
+//					node,
+//					destNodeId,
+//					remoteAddr);
+//
+//		}
+//		else
+//		{
+//			clientPtr->destNodeId = destNodeId;
+//			clientPtr->destInterfaceIndex =
+//				(Int16)MAPPING_GetInterfaceIdForDestAddress(
+//					node,
+//					destNodeId,
+//					remoteAddr);
+//		}
+//	}
+//	Address rmtAddr;
+//	memset(&rmtAddr, 0, sizeof(Address));
+//	rmtAddr.networkType = NETWORK_IPV4;
+//	rmtAddr.interfaceAddr.ipv4 = remoteAddr;
+//	// Handle loopback address in destination
+//	if (destNodeId == INVALID_MAPPING)
+//	{
+//		if (NetworkIpCheckIfAddressLoopBack(node, rmtAddr))
+//		{
+//			clientPtr->destNodeId = node->nodeId;
+//			clientPtr->destInterfaceIndex = DEFAULT_INTERFACE;
+//		}
+//	}
+//	clientPtr->clientInterfaceIndex =
+//		(Int16)MAPPING_GetInterfaceIndexFromInterfaceAddress(
+//			node,
+//			clientPtr->localAddr);
+//}
+//

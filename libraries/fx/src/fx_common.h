@@ -209,10 +209,12 @@ typedef struct struct_handover_participator_fx
 //gss xd
 typedef struct struct_handover_participator_xd
 {
+	
 	LteRnti ueRnti;
 	LteRnti srcEnbRnti;
 	LteRnti sgwmmeRnti;
 	fxRnti tgtxgRnti;
+	Node  *node;
 	struct_handover_participator_xd()
 		: ueRnti(LTE_INVALID_RNTI),
 		srcEnbRnti(LTE_INVALID_RNTI),
@@ -220,14 +222,17 @@ typedef struct struct_handover_participator_xd
 		tgtxgRnti(FX_INVALID_RNTI)
 	{}
 	struct_handover_participator_xd(
+
 		LteRnti ueRnti,
 		LteRnti srcEnbRnti,
 		LteRnti sgwmmeRnti,
-		fxRnti tgtxgRnti)
+		fxRnti tgtxgRnti,
+		Node *node)
 		: ueRnti(ueRnti),
 		srcEnbRnti(srcEnbRnti),
 		sgwmmeRnti(sgwmmeRnti),
-		tgtxgRnti(tgtxgRnti)
+		tgtxgRnti(tgtxgRnti),
+		node(node)
 	{}
 } XdHandoverParticipator;
 
