@@ -277,10 +277,10 @@ void Layer3FxInitHandoverSchedule(
 	const NodeInput* nodeInput);
 
 //gss xd
-void Layer3XdHandOverDecision(
-	Node *node,
-	UInt32 interfaceIndex,
-	const fxRnti& targetRnti);
+//void Layer3XdHandOverDecision(
+//	Node *node,
+//	UInt32 interfaceIndex,
+//	const fxRnti& targetRnti);
 
 //gss xd
 void Layer3FxReceiveXdHoReq(

@@ -45,6 +45,7 @@
 #include "app_vbr.h"
 #include "app_voip.h"
 #include "app_traffic_gen.h"
+#include "app_gen_ftp.h" //gss xd
 //#include "partition.h" //gss xd
 #include "application.h" //gss xd
 
@@ -3291,8 +3292,9 @@ HlaSendCommentIxn(HlaInterfaceData * ifaceData,
 									statsNew.MessageSent = MessageSent;
 									statsNew.simTime = simTime / 1000000000;
 									statsNew.dataSent = dataSent;
-
-									g_APPStatsNew_deque.push_back(statsNew);
+									if (statsNew.MessageSent > 0) {
+										g_APPStatsNew_deque.push_back(statsNew);
+									}
 									//ifaceData->m_hla->partitionData->sysAPPStats[ifaceData->m_hla->partitionData->numoflist-1].
 
 								}
@@ -3582,6 +3584,110 @@ HlaSendCommentIxn(HlaInterfaceData * ifaceData,
 									MessageLength = TrafGenclientPtr->stats->GetDataSent(STAT_Unicast).GetValue(simTime) / MessageSent;
 									AppPacketLoss = 100.0*(1.0 - ((double)MessageRcv / (double)MessageSent));
 									NodeAddress destNodeAddress = TrafGenclientPtr->stats->GetDestAddr().interfaceAddr.ipv4;
+
+									APPStatsNew statsNew;
+									statsNew.SrcId = Src;
+									statsNew.DestId = Dest;
+									statsNew.AppDelay = AppDelay;
+									statsNew.Servicetype = ServiceType;
+									statsNew.AppJet = AppJet;
+									statsNew.AppPacketLoss = AppPacketLoss;
+									statsNew.AppSend = AppSend;
+									statsNew.AppThroughput = AppThroughput;
+									statsNew.delay = delay;
+									statsNew.eleAppType = eleAppType;
+									statsNew.MessageRcv = MessageRcv;
+									statsNew.MessageSent = MessageSent;
+									statsNew.simTime = simTime / 1000000000;
+									statsNew.dataSent = dataSent;
+
+									g_APPStatsNew_deque.push_back(statsNew);
+
+
+									break;
+								}
+							}
+						}//end if Traffic gen server
+
+						 //appSerlist = appSerlist->next;
+						appSerlist = appSerlist->appNext;
+					}//end while 
+				}
+				else if (applist->appType == APP_GEN_FTP_CLIENT)
+				{
+					NodeId nodeId = newNode->nodeId;
+					clocktype delay = 5 * SECOND;
+					double simTimeInDouble = simTime * 1.0 / SECOND;
+					SDHEle_AppType eleAppType;  //0代表PMU业务，1代表稳控业务//20171211
+					double dataSent = 0.0;
+					double AppJet = 0.0;
+					double AppDelay = 0.0;
+					double AppThroughput = 0.0;
+					double AppSend = 0.0;
+					int MessageSent = 0;
+					int MessageRcv = 0;
+					double AppPacketLoss = 0.0;
+					int MessageLength = 0;
+
+					AppDataGenFtpClient* GenFtpclientPtr = (AppDataGenFtpClient*)applist->appDetail;
+					//xyt
+					//multi-processor process
+					char errorString[MAX_STRING_LENGTH];
+
+					//PARTITION_NodeExists: Determines whether the node ID exists in the scenario
+					if (PARTITION_NodeExists(newNode->partitionData, GenFtpclientPtr->stats->GetDestNodeId()) == FALSE)
+					{
+						sprintf(errorString,
+							"Node %d does not exist",
+							GenFtpclientPtr->stats->GetDestNodeId());
+						ERROR_ReportError(errorString);
+					}
+
+					//assume the node is on the current partition
+					Node* serverNode = MAPPING_GetNodePtrFromHash(
+						ifaceData->m_hla->partitionData->nodeIdHash,
+						GenFtpclientPtr->stats->GetDestNodeId());
+					//not on this partition
+					if (serverNode == NULL)
+					{
+						PARTITION_ReturnNodePointer(ifaceData->m_hla->partitionData, &serverNode, GenFtpclientPtr->stats->GetDestNodeId(), TRUE);
+					}
+
+					AppInfo* appSerlist = serverNode->appData.appPtr;
+					//PortInfo* appSerlist = serverNode->appData.portTable;
+					while (appSerlist)
+					{
+						if (appSerlist->appType == APP_GEN_FTP_SERVER)
+						{
+							
+							AppDataGenFtpServer* GenFtpserverPtr = (AppDataGenFtpServer*)appSerlist->appDetail;
+							eleAppType = Ftp_gen;
+							if ((simTime - delay < GenFtpclientPtr->endTime) || (GenFtpclientPtr->endTime == 0))
+							{
+								//double sessionLastRcvTime = TrafGenserverPtr->stats->GetLastMessageReceived(STAT_Unicast).GetValue(simTime);
+								//printf("sessionStarttime===%f--------------sessionFinishtime===%f\n",sessionStarttime,sessionFinishtime);
+
+								//when the SessionFinish is not 0, which suggests that the Session is end
+								//int SrcName = node->nodeId;
+								char* SrcName = newNode->hostname;
+								char* DestName = serverNode->hostname;
+								int Src = newNode->nodeId;
+								int Dest = serverNode->nodeId;
+								char* ServiceType = "FTP_GEN";
+								newEleAppID = newEleAppID + 1;
+								while (GenFtpserverPtr->stats && GenFtpserverPtr->stats->GetSourceNodeId() == newNode->nodeId && GenFtpclientPtr->stats->GetSessionId() == GenFtpserverPtr->stats->GetSessionId())
+								{
+									AppSend = GenFtpclientPtr->stats->GetOfferedLoad(STAT_Unicast).GetValue(simTime);
+									AppThroughput = GenFtpserverPtr->stats->GetThroughput(STAT_Unicast).GetValue(simTime);
+									AppDelay = (GenFtpserverPtr->stats->GetAverageDelay(STAT_Unicast).GetValue(simTime))*1000.0;
+									AppJet = (GenFtpserverPtr->stats->GetAverageJitter(STAT_Unicast).GetValue(simTime))*1000.0;
+									dataSent = (GenFtpclientPtr->stats->GetDataSent(STAT_Unicast).GetValue(simTime));
+									//SJW // AppPacketLoss =1-(AppRcv/512*8)/(AppSend/512*8);实时输出结果有负数
+									MessageSent = GenFtpclientPtr->stats->GetMessagesSent(STAT_Unicast).GetValue(simTime);
+									MessageRcv = GenFtpserverPtr->stats->GetMessagesReceived(STAT_Unicast).GetValue(simTime);
+									MessageLength = GenFtpclientPtr->stats->GetDataSent(STAT_Unicast).GetValue(simTime) / MessageSent;
+									AppPacketLoss = 100.0*(1.0 - ((double)MessageRcv / (double)MessageSent));
+									NodeAddress destNodeAddress = GenFtpclientPtr->stats->GetDestAddr().interfaceAddr.ipv4;
 
 									APPStatsNew statsNew;
 									statsNew.SrcId = Src;

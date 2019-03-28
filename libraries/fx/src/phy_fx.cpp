@@ -679,7 +679,7 @@ void PhySphyInit(
 		&wasFound,
 		&txPower_dBW);
 	if (wasFound) {
-		phy_sphy->txPower_dBm = txPower_dBW;
+		phy_sphy->txPower_dBm = txPower_dBW + 30;  //转换成dbm
 	}
 
 	double rxThreshold_dBm;
@@ -871,7 +871,9 @@ void PhySphyTransmissionEnd(Node *node, int phyIndex)
 	// 暂无处理
 }
 
-
+//gss 
+Int64  Temp_fx_rxpower::temp_time[10][2];
+double Temp_fx_rxpower::FXRSS[10][2];
 void PhySphySignalArrivalFromChannel(
 	Node* node,
 	int phyIndex,
@@ -983,28 +985,23 @@ void PhySphySignalArrivalFromChannel(
 		phyIndex,
 		propRxInfo);
 	double rxPowerInOmnimW
-		= (double)NON_DB(antennaGain + propRxInfo->rxPower_dBm);
+		= (double)NON_DB(antennaGain + propRxInfo->rxPower_dBm);   //转换成mw
+	double rxPowerInOmnidBm
+		= antennaGain + propRxInfo->rxPower_dBm;
+	//double rxPowerInOmnidBm
+	//	= (double)IN_DB(rxPowerInOmnimW *pow(10.0,12));  //转换成dbm
 
 	//gss xd 记录FX的接收机功率 即RSS，该值跟YH与卫星的位置有关
-	if (phy_sphy->stationType == FX_STATION_TYPE_YH) {
-		//char clockStr[MAX_CLOCK_STRING_LENGTH];
-		//ctoa((getSimTime(node) / SECOND), clockStr);
-		/*double time = getSimTime(node) / SECOND;
-			set<Fx_Rss>s;
-			Fx_Rss a;
-			a.time = time;
-			a.rxPower = rxPowerInOmnimW;
-			s.insert(a);
+	if (phy_sphy->stationType == FX_STATION_TYPE_YH && node->nodeId == 2) {
+		if ((getSimTime(node) - Temp_fx_rxpower::temp_time[node->nodeId - 1][1]) >= SECOND)
+		{
+			Temp_fx_rxpower::FXRSS[node->nodeId - 1][1] = rxPowerInOmnidBm;
+			Temp_fx_rxpower::temp_time[node->nodeId - 1][1] = getSimTime(node);
+			double time = getSimTime(node) / SECOND;
 			ofstream outfile("FX_RSS.txt", ofstream::app);
-			set<Fx_Rss>::iterator it;
-			for (it = s.begin(); it != s.end(); it++) {
-				outfile << (*it).time << "  " << (*it).rxPower << endl;
-			}
-			outfile.close();*/
-		double time = getSimTime(node) /SECOND;
-		ofstream outfile("FX_RSS.txt", ofstream::app);
-		outfile << time << ',' << rxPowerInOmnimW << endl;
-		outfile.close();
+			outfile  << rxPowerInOmnidBm << endl;
+			outfile.close();
+		}
 	}
 		
 	

@@ -10609,7 +10609,7 @@ void NetworkGetInterfaceAndNextHopFromForwardingTable(
     *interfaceIndex = NETWORK_UNREACHABLE;
     *nextHopAddress = (unsigned) NETWORK_UNREACHABLE;
 
-    NetworkPrintForwardingTable(node);
+ //   NetworkPrintForwardingTable(node);
 
     for (i=0; i < forwardTable->size; i++) {
         NodeAddress maskedDestinationAddress =

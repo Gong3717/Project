@@ -43,7 +43,11 @@
 #include "epc_lte.h"    //gss xd
 #include "epc_fx_app.h"//gss xd
 #include "network_ip.h" //gss xd
-
+#include "layer2_fx.h"  //gss
+#include<iostream>
+#include <queue>
+#include  <string>
+using namespace std;  //gss
 #ifdef ADDON_DB
 #include "stats_phy.h"
 #include "dbapi.h"
@@ -574,6 +578,18 @@ void PhyLteDebugOutputRxMsgInfoList(Node* node,
 #endif
 //gss xd
 static void XdUpadateUeRoute(Node* node, int interfaceIndex, const LteRnti& oppositeRnti);
+static double * XdRssDecision(Node* node);
+//static double * XdMadmDecision(Node *node,double* lte_metrics,double* fx_metrics);
+static BOOL XdSAWDecision();
+//static double * GrayModel(double arr[], int size);  //GM(1,1)
+static double *GrayModel(queue<double> Q, int size);
+static BOOL XdRealTimeSAWDecision();
+static double** multiply(double A[][3], double B[][3], int M, int N, int K);
+static double** Matrix_tran(double **A);
+static double multiply1(double A[1][3], double B[][1], int L);
+												  
+extern deque<APPStatsNew> g_APPStatsNew_deque;   //gss xd
+
 // /**
 // FUNCTION   :: PhyLteCreateRxMsgInfo
 // LAYER      :: PHY
@@ -5997,6 +6013,8 @@ BOOL PhyLteGetMessageBsrInfo(Node* node,
     return FALSE;
 }
 
+
+
 // /**
 // FUNCTION   :: PhyLteSetMessageRrcCompleteInfo
 // LAYER      :: PHY
@@ -6032,6 +6050,8 @@ BOOL PhyLteSetMessageRrcCompleteInfo(Node* node,
     {
         info->maxTxPower_dBm = *maxTxPower_dBm;
         info->enbRnti        = establishmentData->selectedRntieNB;
+		//hjx
+		Temp_MeasReport::temp_time[node->nodeId - 1][phyIndex] = getSimTime(node);
         return TRUE;
     }
 
@@ -6081,8 +6101,40 @@ BOOL PhyLteSetMessageRrcReconfCompleteInfo(Node* node,
     return FALSE;
 }
 
+// add hjx - judge RrcConnectionSetupComplete
+BOOL PhyLteRrcCompleteIndict(Message* msg)
+{
 
+	PhyLteRrcSetupComplete* info =
+		(PhyLteRrcSetupComplete*)MESSAGE_ReturnInfo(
+			msg,
+			(unsigned short)INFO_TYPE_LtePhyRrcConnectionSetupComplete);
+	PhyLteRrcReconfComplete* info1 =
+		(PhyLteRrcReconfComplete*)MESSAGE_ReturnInfo(
+			msg,
+			(unsigned short)INFO_TYPE_LtePhyRrcConnectionReconfComplete);
+	if ((info != NULL) || (info1 != NULL))
+	{
+		return TRUE;
+	}
 
+	return FALSE;
+}
+//// add hjx - judge MeasurementReport
+//BOOL MeasurementReportIndict(Message* msg)
+//{
+//
+//	PhyLteRrcSetupComplete* info =
+//		(PhyLteRrcSetupComplete*)MESSAGE_ReturnInfo(msg,
+//		(unsigned short)INFO_TYPE_XD_MeasurementReport);
+//
+//	if (info != NULL)
+//	{
+//		return TRUE;
+//	}
+//
+//	return FALSE;
+//}
 // /**
 // FUNCTION   :: PhyLteGetMessageRrcCompleteInfo
 // LAYER      :: PHY
@@ -6552,6 +6604,48 @@ BOOL PhyLteCheckRxDisconnected(Node* node,
     }
 }
 
+//gss 
+Int64  Temp_metrics::store_time = 0;
+BOOL GetXdHandoverDecision(Node* node,double time) {	
+	/* RSS algorithm
+	********************/
+	/*double *rss_arr;
+	rss_arr = XdRssDecision(node);
+	double lte = *(rss_arr + 1);
+	double fx = *(rss_arr + 2);
+	if ( lte < fx ) {
+		return TRUE;
+	}*/
+
+	double curtime = getSimTime(node) / SECOND;
+	double lte_rss = Temp_rxpower::RSS[1][1];
+	double fx_rss = Temp_fx_rxpower::FXRSS[1][1];
+	/**************** RSS algorithm *******************/
+	/*if ((curtime - Temp_metrics::store_time) >= 3 && curtime > 11) {
+		if (lte_rss < fx_rss) {
+			return TRUE;
+		}
+		Temp_metrics::store_time = curtime;
+	}*/
+	/*if ((curtime - Temp_metrics::store_time) >= 3 && curtime > 11) {
+		BOOL F = XdSAWDecision();
+		if (F) {
+			return TRUE;
+		}
+		Temp_metrics::store_time = curtime;
+	}*/
+	if ((curtime - Temp_metrics::store_time )>= 1) {
+		  BOOL F = XdRealTimeSAWDecision();
+		  if (F) {
+			  return TRUE;
+		  }
+		  Temp_metrics::store_time = curtime;
+	  }
+	return FALSE;
+}
+
+//hjx
+int NodeLinkStation::NodeLinkdirection[10];
 // /**
 // FUNCTION   :: PhyLteGetMessageControlInfo
 // LAYER      :: PHY
@@ -6563,6 +6657,7 @@ BOOL PhyLteCheckRxDisconnected(Node* node,
 // + arrival      : BOOL         : Indicate "arrival" or "signal end"
 // RETURN     :: BOOL: when true, Rx-message is control message.
 // **/
+
 static
 BOOL PhyLteGetMessageControlInfo(Node* node,
                                  int phyIndex,
@@ -6709,25 +6804,7 @@ BOOL PhyLteGetMessageControlInfo(Node* node,
                             node->phyData[phyIndex]->macInterfaceIndex,
                             rrcSetupCompleteinfo.enbRnti,
                             txRnti);
-			//gss xd test
-			//EpcData* epc = EpcLteGetEpcData(node);
-
-			//gss xd 原Enb收到测量报告并发送星地切换需求指令
-			XdMeasurementReport* xdmr = (XdMeasurementReport*)MESSAGE_ReturnInfo(msg, (unsigned short)INFO_TYPE_XD_MeasurementReport);
-			if (xdmr != NULL)
-			{
-				Node *ueNode = xdmr->node;
-				LteRnti ueRnti = xdmr->ueRnti;
-				double fxTxPower = xdmr->txPower_dBm;
-				double lteTxPower = xdmr->phylte->maxTxPower_dBm;
-				if (lteTxPower < fxTxPower)
-				{
-					//发送星地切换需求指令
-					//EpcData* epc = EpcLteGetEpcData(node);
-					EpcXdAppSend_HandoverRequried(node, interfaceIndex,ueRnti,LteLayer2GetRnti(node, interfaceIndex),ueNode);
-					//XdUpadateUeRoute(ueNode, 1, LteLayer2GetRnti(node, interfaceIndex)); //更新用户的路由表切换到FX网络
-		        }
-		     }
+		
 
 #ifdef LTE_LIB_LOG
             lte::LteLog::InfoFormat(
@@ -6755,7 +6832,6 @@ BOOL PhyLteGetMessageControlInfo(Node* node,
                 ,rrcSetupCompleteinfo.maxTxPower_dBm);
 #endif // LTE_LIB_LOG
         }
-
         // IF RRC connected reconf complete is included,
         // notify it to RRC layer.
         PhyLteRrcReconfComplete rrcReconfCompleteinfo;
@@ -6855,22 +6931,42 @@ BOOL PhyLteGetMessageControlInfo(Node* node,
             Layer3LteIFHPNotifyMeasurementReportReceived(
                 node, interfaceIndex, srcRnti, &measurementReport);
         }
+		//add hjx.. Send_HandoverRequried based on MeasurementReport
+		
 		//gss xd 原Enb收到测量报告并发送星地切换需求指令
-		//XdMeasurementReport* xdmr = (XdMeasurementReport*)MESSAGE_ReturnInfo(msg, (unsigned short)INFO_TYPE_XD_MeasurementReport);
-		//if (xdmr != NULL)
-		//{
-		//	Node *ueNode = xdmr->node;
-		//	LteRnti ueRnti = xdmr->ueRnti;
-		//	double fxTxPower = xdmr->txPower_dBm;
-		//	double lteTxPower = xdmr->phylte->maxTxPower_dBm;
-		//	if (lteTxPower < fxTxPower)
-		//	{
-		//		//发送星地切换需求指令
-		//		//EpcData* epc = EpcLteGetEpcData(node);
-		//		EpcXdAppSend_HandoverRequried(node, interfaceIndex,ueRnti,LteLayer2GetRnti(node, interfaceIndex),ueNode);
-		//		//XdUpadateUeRoute(ueNode, 1, LteLayer2GetRnti(node, interfaceIndex)); //更新用户的路由表切换到FX网络
-		//       }
-		//    }
+		XdMeasurementReport* xdmr = (XdMeasurementReport*)MESSAGE_ReturnInfo(msg, (unsigned short)INFO_TYPE_XD_MeasurementReport);
+		if (xdmr != NULL)
+		{
+			Node *ueNode = xdmr->node;
+			LteRnti ueRnti = xdmr->ueRnti;
+			double fxTxPower = xdmr->txPower_dBm;
+			double lteTxPower = xdmr->phylte->maxTxPower_dBm;
+			EpcData* epc = EpcLteGetEpcData(node);
+			double curtime = getSimTime(node) / SECOND;
+			if (ueNode->nodeId == 2) {    //星地终端用户才调用决策函数
+				BOOL flag = GetXdHandoverDecision(ueNode, curtime);
+				if (flag)
+				{
+					if (NodeLinkStation::NodeLinkdirection[ueRnti.nodeId - 1] == 0)
+					{
+						//发送星地切换需求指令  LTE切换到FX
+						EpcXdAppSend_HandoverRequried(node, interfaceIndex, ueRnti, LteLayer2GetRnti(node, interfaceIndex), ueNode);
+						//XdUpadateUeRoute(ueNode, 1, LteLayer2GetRnti(node, interfaceIndex)); //更新用户的路由表切换到FX网络
+						epc->statData.numXdHandover++;
+
+					}
+					//epc->statData.numXdHandoverFailed++;
+				}
+				else if (NodeLinkStation::NodeLinkdirection[ueRnti.nodeId - 1] == 1)
+				{
+					//发送星地切换需求指令  FX切换到LTE   信令流程暂时没写  直接切换
+					//EpcXdAppSend_HandoverRequried(node, interfaceIndex, ueRnti, LteLayer2GetRnti(node, interfaceIndex), ueNode);
+					XdUpadateUeRoute(ueNode, 1, LteLayer2GetRnti(node, interfaceIndex)); //更新用户的路由表切换到FX网络
+					epc->statData.numXdHandover++;
+				}
+			}	
+			
+		}
 		
     }
     // Control signals to check on SignalEnd timing.
@@ -7378,8 +7474,6 @@ void PhyLteSetPropagationDelay(Node* node,
 
     phyLte->propagationDelay =
         *(node->currentTime) - propTxInfo->txStartTime;
-	//gss xd test
-	double temp = phyLte->propagationDelay / (double)SECOND;
 #if LTE_LAYER2_DEFAULT_USE_SPECIFIED_DELAY
     phyLte->propagationDelay += LTE_LAYER2_DEFAULT_DELAY_UNTIL_AIRBORN;
 #endif
@@ -8504,13 +8598,10 @@ LteTxScheme PhyLteJudgeTxScheme(Node* node,
 // RETURN     :: void : NULL
 // **/
 
-// string lastENBInfo = "";
-// string lastUEInfo = "";
-// string lastENBTxState = "";
-// string lastENBRxState = "";
-// string lastUETxState = "";
-// string lastUERxState = "";
 
+//hjx
+Int64  Temp_rxpower::temp_time[10][2];
+double Temp_rxpower::RSS[10][2];
 void PhyLteSignalArrivalFromChannel(Node* node,
                                     int phyIndex,
                                     int channelIndex,
@@ -8599,6 +8690,32 @@ void PhyLteSignalArrivalFromChannel(Node* node,
             " Please check channel configuration.");
     }
 
+	//hjx——Calculate pathloss excluding fading.
+	// RSS计算提前，在处理控制信息之前
+	double pathloss_dB =
+		PhyLteGetPathloss_dB(node, phyIndex, lteTxInfo, propRxInfo);
+
+	//rxPower_mW-hjx
+	double lte_rxPower_mW =
+		(double)NON_DB(lteTxInfo->txPower_dBm - pathloss_dB);   //转换成mw
+	double lte_rxPower_dBm =
+		lteTxInfo->txPower_dBm - pathloss_dB;
+	//double lte_rxPower_dBm = (double)IN_DB(lte_rxPower_mW*pow(10.0, 12));  //转换成dbm
+		                                                       
+	// add hjx	
+	if (phyLte->stationType == LTE_STATION_TYPE_UE && node->nodeId == 2)
+	{
+		if ((getSimTime(node) - Temp_rxpower::temp_time[node->nodeId - 1][1]) >= SECOND)
+		{
+			Temp_rxpower::RSS[node->nodeId - 1][1] = lte_rxPower_dBm;
+			Temp_rxpower::temp_time[node->nodeId - 1][1] = getSimTime(node);
+			double time = getSimTime(node) / SECOND;
+			ofstream outfile("LTE_RSS.txt", ofstream::app);
+			outfile << lte_rxPower_dBm << endl;
+			outfile.close();
+		}
+	}
+
     // Process control messages
     PhyLteGetMessageControlInfo(node,
                                 phyIndex,
@@ -8630,9 +8747,9 @@ void PhyLteSignalArrivalFromChannel(Node* node,
         PhyLteSetPropagationDelay(node, phyIndex, propTxInfo);
     }
 
-    // Calculate pathloss excluding fading.
-    double pathloss_dB =
-        PhyLteGetPathloss_dB(node, phyIndex, lteTxInfo, propRxInfo);
+    //// Calculate pathloss excluding fading.
+    //double pathloss_dB =
+    //    PhyLteGetPathloss_dB(node, phyIndex, lteTxInfo, propRxInfo);
 
 #ifdef LTE_LIB_LOG
         LteRnti txRnti = LteRnti(propTxInfo->txNodeId,
@@ -8702,14 +8819,14 @@ void PhyLteSignalArrivalFromChannel(Node* node,
         NON_DB(lteTxInfo->txPower_dBm - pathloss_dB);
 
 	//gss xd 记录FX的接收机功率 即RSS，该值跟YH与卫星的位置有关
-	if (phyLte->stationType == LTE_STATION_TYPE_UE) {
-		double time = getSimTime(node) / (double)SECOND;
-		//char clockStr[MAX_CLOCK_STRING_LENGTH];
-		//ctoa((getSimTime(node) / SECOND), clockStr);
-		ofstream outfile("LTE_RSS.txt", ofstream::app);
-		outfile << time << "  " << newRxMsgInfo->rxPower_mW << endl;
-		outfile.close();
-	}
+	//if (phyLte->stationType == LTE_STATION_TYPE_UE) {
+	//	double time = getSimTime(node) / (double)SECOND;
+	//	//char clockStr[MAX_CLOCK_STRING_LENGTH];
+	//	//ctoa((getSimTime(node) / SECOND), clockStr);
+	//	ofstream outfile("LTE_RSS.txt", ofstream::app);
+	//	outfile << time << "  " << newRxMsgInfo->rxPower_mW << endl;
+	//	outfile.close();
+	//}
 
     newRxMsgInfo->propTxInfo = *propTxInfo; // Copy
     newRxMsgInfo->lteTxInfo = *lteTxInfo;   // Copy
@@ -10225,6 +10342,8 @@ double PhyLteGetTxPower(Node* node, Int32 phyIndex, Message* packet)
     return txPower_dBm;
 }
 
+
+
 // /**
 // FUNCTION   :: PhyLteStartTransmittingSignal
 // LAYER      :: PHY
@@ -10238,6 +10357,9 @@ double PhyLteGetTxPower(Node* node, Int32 phyIndex, Message* packet)
 // + initDelayUntilAirborne    : clocktype : The MAC specified delay
 // RETURN     :: void : NULL
 // **/
+
+//add hjx
+Int64 Temp_MeasReport::temp_time[10][2];
 void PhyLteStartTransmittingSignal(Node* node,
                                    int phyIndex,
                                    Message* packet,
@@ -10309,9 +10431,14 @@ void PhyLteStartTransmittingSignal(Node* node,
                  | PhyLteSetRrcMeasReportInfo(node, phyIndex, packet));
 
 			//gss xd
-			TransportFlag =
-				(TransportFlag
-					| PhyLteSetXdMeasReportInfo(node, phyIndex, packet));
+		    if (PhyLteRrcCompleteIndict(packet)||
+			     ((getSimTime(node) - Temp_MeasReport::temp_time[node->nodeId - 1][phyIndex]) >= SECOND))
+			{
+				TransportFlag =
+					(TransportFlag
+						| PhyLteSetXdMeasReportInfo(node, phyIndex, packet));
+ 				Temp_MeasReport::temp_time[node->nodeId - 1][phyIndex] = getSimTime(node);
+			}
         }
     }
     else if (phyLte->stationType == LTE_STATION_TYPE_ENB)
@@ -10355,10 +10482,6 @@ void PhyLteStartTransmittingSignal(Node* node,
             TransportFlag =
                 (TransportFlag
                  | PhyLteSetRrcConnReconfInfo(node, phyIndex, packet));
-			//gss xd
-			/*TransportFlag =
-				(TransportFlag
-					| PhyLteSetXdMeasReportInfo(node, phyIndex, packet));*/
         }
 
     }
@@ -12292,8 +12415,10 @@ static void XdUpadateUeRoute(Node* node, int interfaceIndex, const LteRnti& oppo
 	if (stationType == LTE_STATION_TYPE_UE) {
 		destAddr = 0;   // default route
 		destMask = 0;   // default route
-		nextHop = 3187672066;
-		outgoingInterfaceIndex = 0;
+		//nextHop = 3187672066;
+	    nextHop = 3187672834;  //切到FX
+		outgoingInterfaceIndex = 1;
+		NodeLinkStation::NodeLinkdirection[node->nodeId - 1] = 0;
 	}
 	NetworkRoutingProtocolType type = ROUTING_PROTOCOL_STATIC;
 	int cost = 0;
@@ -12306,4 +12431,615 @@ static void XdUpadateUeRoute(Node* node, int interfaceIndex, const LteRnti& oppo
 		outgoingInterfaceIndex,
 		cost,
 		type);
+}
+
+//gss rss
+static double * XdRssDecision(Node *node) {
+	if (node->nodeId == 2) {
+		double curtime = getSimTime(node) / SECOND;
+		double lte_rss = Temp_rxpower::RSS[1][1];
+		double fx_rss = Temp_fx_rxpower::FXRSS[1][1];
+		double arr[3] = { curtime,lte_rss, fx_rss };
+		return arr;
+	}	
+}
+
+
+//double Temp_metrics::delay_lte[12];
+//double Temp_metrics::delay_fx[12];
+//double Temp_metrics::jet_lte[12];
+//double Temp_metrics::jet_fx[12];
+//int Temp_metrics::index = 0;
+int Temp_metrics::sizeps = 0;
+queue<double> delay_lte;
+queue<double> delay_fx;
+queue<double> jet_lte;
+queue<double> jet_fx;
+queue<double> rss_lte;
+queue<double> rss_fx;
+queue<double> thr_lte;
+queue<double> thr_fx;
+
+static BOOL XdSAWDecision() {
+	
+	deque<APPStatsNew>::iterator it = g_APPStatsNew_deque.begin();
+	double M[2][2] = { 0.0 };
+	double maxdelay_lte = 0.0;  double maxjet_lte = 0.0; double th_lte = 0.0;
+	double maxdelay_fx  = 0.0;  double maxjet_fx  = 0.0; double th_fx  = 0.0;  
+	double lte_rss = 0.0;
+	double fx_rss = 0.0;
+	char* servicetype = "";
+	for (int i = Temp_metrics::sizeps; i < g_APPStatsNew_deque.size(); i++) {
+		if (g_APPStatsNew_deque[i].DestId == 10) {
+			th_lte = th_lte + g_APPStatsNew_deque[i].AppThroughput; //获取LTE网络每秒的流量
+			if (maxdelay_lte < g_APPStatsNew_deque[i].AppDelay) {
+				maxdelay_lte = g_APPStatsNew_deque[i].AppDelay;  //获取LTE网络时延、时延抖动最大值
+			}
+			if (maxjet_lte < g_APPStatsNew_deque[i].AppJet) {
+				maxjet_lte = g_APPStatsNew_deque[i].AppJet;
+			}
+		}
+		else if (g_APPStatsNew_deque[i].DestId == 4) {
+			th_fx = th_fx + g_APPStatsNew_deque[i].AppThroughput;   //获取FX网络每秒的流量
+			if (maxdelay_fx < g_APPStatsNew_deque[i].AppDelay) {   //获取FX网络每秒时延、时延抖动最大值
+				maxdelay_fx = g_APPStatsNew_deque[i].AppDelay;
+			}
+			if (maxjet_fx < g_APPStatsNew_deque[i].AppJet) {
+				maxjet_fx = g_APPStatsNew_deque[i].AppJet;
+			}
+		}
+		else if (g_APPStatsNew_deque[i].DestId == 9) {
+			servicetype = g_APPStatsNew_deque[i].Servicetype;
+		}
+	}
+	Temp_metrics::sizeps = g_APPStatsNew_deque.size();
+	lte_rss = Temp_rxpower::RSS[1][1];
+	fx_rss = Temp_fx_rxpower::FXRSS[1][1];
+	double result[6] = { 0.0 };
+	result[0] = maxdelay_lte;  //lte delay
+	result[1] = maxjet_lte;    //lte jet
+	result[2] = th_lte;        //fx th
+	result[3] = maxdelay_fx;   //fx delay
+	result[4] = maxjet_fx;     //fx jet
+	result[5] = th_fx;         //fx th
+	//if (result[0] > 0) {
+	//	/*int t = Temp_metrics::index++;
+	//	if (t < 12) {
+	//		Temp_metrics::delay_lte[t] = maxdelay_lte;
+	//		Temp_metrics::delay_fx[t] = maxdelay_fx;
+	//		Temp_metrics::jet_lte[t] = maxjet_lte;
+	//		Temp_metrics::jet_fx[t] = maxjet_fx;
+	//	}*/
+	//	delay_lte.push(maxdelay_lte);   //取两个网络的10个属性值进行预测后两个时刻的属性值
+	//	if (delay_lte.size()>10) {
+	//		delay_lte.pop();
+	//	}
+	//	delay_fx.push(maxdelay_fx);
+	//	if (delay_fx.size() > 10) {
+	//		delay_fx.pop();
+	//	}
+	//	jet_lte.push(maxjet_lte);
+	//	if (jet_lte.size() > 10) {
+	//		jet_lte.pop();
+	//	}
+	//	jet_fx.push(maxjet_fx);
+	//	if (jet_fx.size() > 10) {
+	//		jet_fx.pop();
+	//	}
+	//}
+	double Score_lte = 0.0; double Score_fx = 0.0;
+	double w_A1[1][3] = { 0.0629,0.6716,0.2654 };  //会话类    
+	double w_A2[1][3] = { 0.1047,0.2583,0.6370 }; //流类
+	double w_A3[1][3] = { 0.6942,0.2103,0.0955 }; //交互类
+	double w_A4[1][3] = { 0.8182,0.0909,0.0909 }; //背景类
+	if (strcmp(servicetype, "VBR") == 0) {
+		Score_lte = w_A2[0][0] * lte_rss + w_A2[0][1] * result[0] + w_A2[0][2] * result[1];
+		Score_fx  = w_A2[0][0] * fx_rss + w_A2[0][1] * result[3] + w_A2[0][2] * result[4];
+	}
+	else if (strcmp(servicetype, "CBR") == 0) {
+		Score_lte = w_A3[0][0] * lte_rss + w_A3[0][1] * result[0] + w_A3[0][2] * result[1];
+		Score_fx  = w_A3[0][0] * fx_rss + w_A3[0][1] * result[3] + w_A3[0][2] * result[4];
+	}
+	else if (strcmp(servicetype, "FTP_GEN") == 0) {
+		Score_lte = w_A4[0][0] * lte_rss + w_A4[0][1] * result[0] + w_A4[0][2] * result[1];
+		Score_fx = w_A4[0][0] * fx_rss + w_A4[0][1] * result[3] + w_A4[0][2] * result[4];
+	}
+	if (Score_lte < Score_fx) {
+		return TRUE;
+	}
+	return FALSE;
+}
+
+//static double *GrayModel(double arr[], int size) 
+static double *GrayModel(queue<double> Q, int size) {
+
+	double arr[10] = { 0.0 };
+	if (Q.size() > 0) {
+		for (int i = 0; i < 10; i++) {
+			arr[i] = Q.front();
+			Q.pop();
+		}
+	}
+	// 预测模型函数   用10个原始数据，预测后两个数据
+	int tsize = 10 - 1;
+	double arr1[9] = { 0.0 }; // 经过一次累加数组
+	double sum = 0;
+	for (int i = 0; i < 15; i++) {
+		sum += arr[i];
+		arr1[i] = sum;
+	}
+	double arr2[8] = { 0.0 };// arr1的紧邻均值数组
+	for (int i = 0; i < tsize; i++) {
+		arr2[i] = (double)(arr1[i] + arr1[i + 1]) / 2;
+	}
+	/*
+	*
+	* 下面建立 向量B和YN求解待估参数向量， 即求参数a,b
+	*/
+	/*
+	* 下面建立向量B, B是5行2列的矩阵， 相当于一个二维数组。
+	*/
+	double B[9][2] = { 0.0 };
+	for (int i = 0; i < tsize; i++) {
+		for (int j = 0; j < 2; j++) {
+			if (j == 1)
+				B[i][j] = 1;
+			else
+				B[i][j] = -arr2[i];
+		}
+	}
+	/*
+	* 下面建立向量YN
+	*/
+	double YN[9][1] = { 0.0 };
+	for (int i = 0; i < tsize; i++) {
+		for (int j = 0; j < 1; j++) {
+			YN[i][j] = arr[i + 1];
+		}
+	}
+	/*
+	* B的转置矩阵BT,2行5列的矩阵
+	*/
+	double BT[2][9] = { 0.0 };
+	for (int i = 0; i < 2; i++) {
+		for (int j = 0; j < tsize; j++) {
+			BT[i][j] = B[j][i];
+		}
+	}
+	/*
+	* 将BT和B的乘积所得到的结果记为数组B2T,则B2T是一个2*2的矩阵
+	*/
+	double B2T[2][2] = { 0.0 };
+	for (int i = 0; i < 2; i++) {// rows of BT
+
+		{
+			for (int j = 0; j < 2; j++)// cloums of B
+			{
+				for (int k = 0; k < tsize; k++)// cloums of BT=rows of B
+				{
+					B2T[i][j] = B2T[i][j] + BT[i][k] * B[k][j];
+				}
+			}
+
+		}
+	}
+	/* 下面求B2T的逆矩阵，设为B_2T，怎么适用于一般的矩阵？ */
+	double B_2T[2][2] = { 0.0 };
+	B_2T[0][0] = (1 / (B2T[0][0] * B2T[1][1] - B2T[0][1] * B2T[1][0]))
+		* B2T[1][1];
+	B_2T[0][1] = (1 / (B2T[0][0] * B2T[1][1] - B2T[0][1] * B2T[1][0]))
+		* (-B2T[0][1]);
+	B_2T[1][0] = (1 / (B2T[0][0] * B2T[1][1] - B2T[0][1] * B2T[1][0]))
+		* (-B2T[1][0]);
+	B_2T[1][1] = (1 / (B2T[0][0] * B2T[1][1] - B2T[0][1] * B2T[1][0]))
+		* B2T[0][0];
+	/*
+	* 根据以上所求的各已知量下面求待估参数的未知量a和b，待估向量矩阵等于B_2T*BT*YN
+	* 下面我们分别求这些矩阵的乘积，首先求B_2T*BT，令B_2T*BT的乘积为A矩阵，则A就是一个2*5的矩阵
+	*/
+	/*
+	*
+	*
+	*
+	* 下面先求A矩阵
+	*/
+	double A[2][9] = { 0.0 };
+	for (int i = 0; i < 2; i++) {// rows of B_2T
+		{
+			for (int j = 0; j < tsize; j++)// cloums of BT
+			{
+				for (int k = 0; k < 2; k++)// cloums of B_2T=rows of BT
+				{
+					A[i][j] = A[i][j] + B_2T[i][k] * BT[k][j];
+				}
+			}
+
+		}
+	}
+	/*
+	*
+	*
+	* 下面求A和YN矩阵的乘积，令乘积为C矩阵，则C就是一个2*1的矩阵
+	*/
+	double C[2][1] = { 0.0 };
+	for (int i = 0; i < 2; i++) {// rows of A
+
+		{
+			for (int j = 0; j < 1; j++)// cloums of YN
+			{
+				for (int k = 0; k < tsize; k++)// cloums of A=rows of YN
+				{
+					C[i][j] = C[i][j] + A[i][k] * YN[k][j];
+				}
+			}
+
+		}
+	}
+	/* 根据以上所得则a=C[0][0],b=C[1][0]; */
+	double a = C[0][0], b = C[1][0];
+
+	//int i = T;// 读取一个数值
+	//double Y = (arr[0] - b / a)*exp( -a * (i + 1)) - (arr[0] - b / a)*exp( -a * (i));
+	//预测后续数据,这里仅预测后两个，假设训练数据长度为10
+	double F[12] = { 0.0 };
+	F[0] = arr[0];
+	for (int i = 1; i < 12; i++) {
+		F[i] = (arr[0] - b / a)*exp(-a * (i)) + b / a;
+	}
+
+	//对数列 F 累减还原,得到预测出的数据
+	
+	//double G[12] = { 0.0 };
+	double * G = new double[12];  //分配地址空间
+	G[0] = arr[0];
+	ofstream outfile1, outfile2, outfile3, outfile4, outfile5, outfile6;
+	outfile1.open("ycltedelay.csv", ios::app | ios::out); //如果没有文件则创建文件，如果有文件，则在文件尾追加 
+	outfile2.open("ycfxdelay.csv", ios::app | ios::out);
+	outfile3.open("ycltejet.csv", ios::app | ios::out);
+	outfile4.open("ycfxjet.csv", ios::app | ios::out);
+	outfile5.open("yclterss.csv", ios::app | ios::out);
+	outfile6.open("ycfxrss.csv", ios::app | ios::out);
+	("yuce.txt", ofstream::app);
+	for (int i = 1; i < 12; i++) {
+		G[i] = F[i] - F[i - 1];
+		if (size == 1) {
+			outfile1 << arr[i] << "," << G[i] << endl;
+		}
+		else if (size == 2) {
+			outfile2 << arr[i] << "," << G[i] << endl;
+		}
+		else if (size == 3) {
+			outfile3 << arr[i] << "," << G[i] << endl;
+		}
+		else if (size == 4) {
+			outfile4 << arr[i] << "," << G[i] << endl;
+		}
+		else if (size == 5) {
+			outfile5 << arr[i] << "," << G[i] << endl;
+		}
+		else if (size == 6) {
+			outfile6 << arr[i] << "," << G[i] << endl;
+		}		
+	}
+	outfile1.close(); outfile2.close(); outfile3.close(); outfile4.close(); outfile5.close(); outfile6.close();
+	return G;
+}
+
+//gss real-time MADM
+Int64  Temp_metrics::interval = 0;
+static BOOL XdRealTimeSAWDecision(){
+	
+	deque<APPStatsNew>::iterator it = g_APPStatsNew_deque.begin();
+	double maxdelay_lte = 0.0;  double maxjet_lte = 0.0; double th_lte = 0.0;
+	double maxdelay_fx = 0.0;  double maxjet_fx = 0.0; double th_fx = 0.0;
+	double cur_time = 0.0;
+	double lte_rss = 0.0;
+	double fx_rss = 0.0;
+	char* servicetype = ""; 
+	for (int i = Temp_metrics::sizeps; i < g_APPStatsNew_deque.size(); i++) {
+		if (g_APPStatsNew_deque[i].DestId == 10) {
+			th_lte = th_lte + g_APPStatsNew_deque[i].AppThroughput; //获取LTE网络每秒的流量
+			if (maxdelay_lte < g_APPStatsNew_deque[i].AppDelay) {
+				maxdelay_lte = g_APPStatsNew_deque[i].AppDelay;  //获取LTE网络时延、时延抖动最大值
+			}
+			if (maxjet_lte < g_APPStatsNew_deque[i].AppJet) {
+				maxjet_lte = g_APPStatsNew_deque[i].AppJet;
+			}
+		}
+		else if (g_APPStatsNew_deque[i].DestId == 4) {
+			th_fx = th_fx + g_APPStatsNew_deque[i].AppThroughput;   //获取FX网络每秒的流量
+			if (maxdelay_fx < g_APPStatsNew_deque[i].AppDelay) {   //获取FX网络每秒时延、时延抖动最大值
+				maxdelay_fx = g_APPStatsNew_deque[i].AppDelay;
+			}
+			if (maxjet_fx < g_APPStatsNew_deque[i].AppJet) {
+				maxjet_fx = g_APPStatsNew_deque[i].AppJet;
+			}
+		}
+		else if (g_APPStatsNew_deque[i].DestId == 9) {
+			servicetype = g_APPStatsNew_deque[i].Servicetype;
+		}
+		cur_time = g_APPStatsNew_deque[i].simTime;
+	}
+	Temp_metrics::sizeps = g_APPStatsNew_deque.size();
+	lte_rss = Temp_rxpower::RSS[1][1];
+	fx_rss = Temp_fx_rxpower::FXRSS[1][1];
+	if (maxdelay_lte > 0) {
+		delay_lte.push(maxdelay_lte);   //取两个网络的10个属性值进行预测后两个时刻的属性值
+		if (delay_lte.size()>10) {
+			delay_lte.pop();
+		}
+		delay_fx.push(maxdelay_fx);
+		if (delay_fx.size() > 10) {
+			delay_fx.pop();
+		}
+		jet_lte.push(maxjet_lte);
+		if (jet_lte.size() > 10) {
+			jet_lte.pop();
+		}
+		jet_fx.push(maxjet_fx);
+		if (jet_fx.size() > 10) {
+			jet_fx.pop();
+		}
+		rss_lte.push(lte_rss);
+		if (rss_lte.size() > 10) {
+			rss_lte.pop();
+		}
+		rss_fx.push(fx_rss);
+		if (rss_fx.size() > 10) {
+			rss_fx.pop();
+		}
+		thr_lte.push(th_lte);
+		if (thr_lte.size() > 10) {
+			thr_lte.pop();
+		}
+		thr_fx.push(th_fx);
+		if (thr_fx.size() > 10) {
+			thr_fx.pop();
+		}
+	}
+	double *arr_delay_lte;
+	double *arr_delay_fx;
+	double *arr_jet_lte;
+	double *arr_jet_fx;
+	double *arr_rss_lte;
+	double *arr_rss_fx;
+	double *arr_thr_lte;
+	double *arr_thr_fx;
+	if (delay_lte.size() == 10) {
+		arr_delay_lte = GrayModel(delay_lte, 1);
+	}
+	if (delay_fx.size() == 10) {
+		arr_delay_fx = GrayModel(delay_fx, 2);
+	}
+	if (jet_lte.size() == 10) {
+		arr_jet_lte = GrayModel(jet_lte, 3);
+	}
+	if (jet_fx.size() == 10) {
+	    arr_jet_fx = GrayModel(jet_fx, 4);
+	}
+	if (rss_lte.size() == 10) {
+		arr_rss_lte = GrayModel(rss_lte, 5);
+	}
+	if (rss_fx.size() == 10) {
+		arr_rss_fx = GrayModel(rss_fx, 6);
+	}
+	if (thr_lte.size() == 10) {
+		arr_thr_lte = GrayModel(thr_lte, 7);
+	}
+	if (thr_fx.size() == 10) {
+		arr_thr_fx = GrayModel(thr_fx, 8);
+	}
+	double Score_lte = 0.0; double Score_fx = 0.0;
+	if (delay_lte.size() == 10 && (cur_time - Temp_metrics::interval) >= 3) {
+		Temp_metrics::interval = cur_time;
+		//初始化决策矩阵A
+		double A[6][3] = { 0.0 };
+		A[0][0] = lte_rss;  A[0][1] = maxdelay_lte; A[0][2] = maxjet_lte;
+		A[1][0] = fx_rss;   A[1][1] = maxdelay_fx;  A[1][2] = maxjet_fx;
+		A[2][0] = *(arr_rss_lte + 10); A[2][1] = *(arr_delay_lte + 10); A[2][2] = *(arr_jet_lte + 10);
+		A[3][0] = *(arr_rss_fx + 10);  A[3][1] = *(arr_delay_fx + 10);  A[3][2] = *(arr_jet_fx + 10);
+		A[4][0] = *(arr_rss_lte + 11); A[4][1] = *(arr_delay_lte + 11); A[4][2] = *(arr_jet_lte + 11);
+		A[5][0] = *(arr_rss_fx + 11);  A[5][1] = *(arr_delay_fx + 11);  A[5][2] = *(arr_jet_fx + 11);
+
+		//初始化增量矩阵B
+		double B[4][3] = { 0.0 };
+		B[0][0] = (A[2][0] - A[0][0]) / fabs(A[0][0]); B[0][1] = (A[2][1] - A[0][1]) / fabs(A[0][1]); B[0][2] = (A[2][2] - A[0][2]) / fabs(A[0][2]);
+ 		B[1][0] = (A[3][0] - A[1][0]) / fabs(A[1][0]); B[1][1] = (A[3][1] - A[1][1]) / fabs(A[1][1]); B[1][2] = (A[3][2] - A[1][2]) / fabs(A[1][2]);
+		B[2][0] = (A[4][0] - A[2][0]) / fabs(A[2][0]); B[2][1] = (A[4][1] - A[2][1]) / fabs(A[2][1]); B[2][2] = (A[4][2] - A[2][2]) / fabs(A[2][2]);
+		B[3][0] = (A[5][0] - A[3][0]) / fabs(A[3][0]); B[3][1] = (A[5][1] - A[3][1]) / fabs(A[3][1]); B[3][2] = (A[5][2] - A[3][2]) / fabs(A[3][2]);
+
+		//0-1 矩阵A
+		double A1[6][3] = { 0.0 };
+		/*if (A[0][0] > A[1][0]) { 
+			A1[0][0] = 1; A1[1][0] = 0;
+		}
+		else {
+			A1[0][0] = 0; A1[1][0] = 1;
+		}
+		if (A[0][1] > A[1][1]) {
+			A1[0][1] = 0; A1[1][1] = 1;
+		}
+		else {
+			A1[0][1] = 1; A1[1][1] = 0; 
+		}
+		if (A[0][2] > A[1][2]) {
+			A1[0][2] = 0; A1[1][2] = 1;
+		}
+		else {
+			A1[0][2] = 1; A1[1][2] = 0;
+		}
+
+		if (A[2][0] > A[3][0]) {
+			A1[2][0] = 1; A1[3][0] = 0;
+		}
+		else { 
+			A1[2][0] = 0; A1[3][0] = 1;
+		}
+		if (A[2][1] > A[3][1]) {
+			A1[2][1] = 0; A1[3][1] = 1;
+		}
+		else {
+			A1[2][1] = 1; A1[3][1] = 0;
+		}
+		if (A[2][2] > A[3][2]) {
+			A1[2][2] = 0; A1[3][2] = 1;
+		}
+		else {
+			A1[2][2] = 1; A1[3][2] = 0;
+		}
+
+		if (A[4][0] > A[5][0]) {
+			A1[4][0] = 1; A1[5][0] = 0;
+		}
+		else { A1[4][0] = 0; A1[5][0] = 1; }
+		if (A[4][1] > A[5][1]) {
+			A1[4][1] = 0; A1[5][1] = 1;
+		}
+		else {
+			A1[4][1] = 1; A1[5][1] = 0;
+		}
+		if (A[4][2] > A[5][2]) {
+			A1[4][2] = 0; A1[5][2] = 1;
+		}
+		else {
+			A1[4][2] = 1; A1[5][2] = 0;
+		}*/
+		A1[0][0] = A[0][0] / (A[0][0] + A[1][0]);  A1[0][1] = A[0][1] / (A[0][1] + A[1][1]); A1[0][2] = A[0][2] / (A[0][2] + A[1][2]);
+		A1[1][0] = A[1][0] / (A[0][0] + A[1][0]);  A1[1][1] = A[1][1] / (A[1][1] + A[1][1]); A1[1][2] = A[1][2] / (A[0][2] + A[1][2]);
+		A1[2][0] = A[2][0] / (A[2][0] + A[3][0]);  A1[2][1] = A[2][1] / (A[2][1] + A[3][1]); A1[2][2] = A[2][2] / (A[2][2] + A[3][2]);
+		A1[3][0] = A[3][0] / (A[2][0] + A[3][0]);  A1[3][1] = A[3][1] / (A[2][1] + A[3][1]); A1[3][2] = A[3][2] / (A[2][2] + A[3][2]);
+		A1[4][0] = A[4][0] / (A[4][0] + A[5][0]);  A1[4][1] = A[4][1] / (A[4][1] + A[5][1]); A1[4][2] = A[4][2] / (A[4][2] + A[5][2]);
+		A1[5][0] = A[5][0] / (A[4][0] + A[5][0]);  A1[5][1] = A[5][1] / (A[4][1] + A[5][1]); A1[5][2] = A[5][2] / (A[4][2] + A[5][2]);
+
+		//0-1 矩阵B
+		double B1[4][3] = { 0.0 };
+		/*if (B[0][0] > B[1][0]) {
+			B1[0][0] = 1; B1[1][0] = 0;
+		}
+		else {
+			B1[0][0] = 0; B1[1][0] = 1;
+		}
+		if (B[0][1] > B[1][1]) {
+			B1[0][1] = 0; B1[1][1] = 1;
+		}
+		else {
+			B1[0][1] = 1; B1[1][1] = 0;
+		}
+		if (B[0][2] > B[1][2]) {
+			B1[0][2] = 0; B1[1][2] = 1;
+		}
+		else {
+			B1[0][2] = 1; B1[1][2] = 0;
+		}
+
+		if (B[2][0] > B[3][0]) {
+			B1[2][0] = 1; B1[3][0] = 0;
+		}
+		else {
+			B1[2][0] = 0; B1[3][0] = 1;
+		}
+		if (B[2][1] > B[3][1]) {
+			B1[2][1] = 0; B1[3][1] = 1;
+		}
+		else {
+			B1[2][1] = 1; B1[3][1] = 0;
+		}
+		if (B[2][2] > B[3][2]) {
+			B1[2][2] = 0; B1[3][2] = 1;
+		}
+		else {
+			B1[2][2] = 1; B1[3][2] = 0;
+		}*/
+		B1[0][0] = B[0][0] / (B[0][0] + B[1][0]);  B1[0][1] = B[0][1] / (B[0][1] + B[1][1]); B1[0][2] = B[0][2] / (B[0][2] + B[1][2]);
+		B1[1][0] = B[1][0] / (B[0][0] + B[1][0]);  B1[1][1] = B[1][1] / (B[1][1] + B[1][1]); B1[1][2] = B[1][2] / (B[0][2] + B[1][2]);
+		B1[2][0] = B[2][0] / (B[2][0] + B[3][0]);  B1[2][1] = B[2][1] / (B[2][1] + B[3][1]); B1[2][2] = B[2][2] / (B[2][2] + B[3][2]);
+		B1[3][0] = B[3][0] / (B[2][0] + B[3][0]);  B1[3][1] = B[3][1] / (B[2][1] + B[3][1]); B1[3][2] = B[3][2] / (B[2][2] + B[3][2]);
+
+		//将规范化的决策矩阵和增量矩阵按网络拆分
+		double A_lte[3][3] = { { A1[0][0],A1[0][1],A1[0][2] },{ A1[2][0],A1[2][1],A1[2][2] } ,{ A1[4][0],A1[4][1],A1[4][2] } };
+		double A_fx[3][3] = { { A1[1][0],A1[1][1],A1[1][2] },{ A1[3][0],A1[3][1],A1[3][2] } ,{ A1[5][0],A1[5][1],A1[5][2] } };
+		double B_lte[2][3] = { { B1[0][0],B1[0][1],B1[0][2] },{ B1[2][0],B1[2][1],B1[2][2] } };
+		double B_fx[2][3] = { { B1[1][0],B1[1][1],B1[1][2] },{ B1[3][0],B1[3][1],B1[3][2] } };
+		//获取时间权重、属性权重、决策矩阵和增量矩阵权重
+		double v_A[1][3] = { 0.5000 ,0.3333,0.1667 };  double v_B[1][3] = { 0.6667,0.3333 };
+		double w_A1[1][3]  = { 0.0629,0.6716,0.2654 };  //会话类    
+		double w_A2[1][3] = { 0.1047,0.2583,0.6370 }; //流类
+		double w_A3[1][3] = { 0.6942,0.2103,0.0955 }; //交互类
+		double w_A4[1][3] = { 0.8182,0.0909,0.0909 }; //背景类
+		
+		double **M_lte; double **D_lte;
+		double **M_fx;  double **D_fx;
+		double m_lte[3][1] = { 0.0 }; double d_lte[3][1] = { 0.0 };
+		double m_fx[3][1]  = { 0.0 }; double d_fx[3][1] = { 0.0 };
+		M_lte = Matrix_tran(multiply(v_A, A_lte, 1, 3, 3));
+		D_lte = Matrix_tran(multiply(v_B, B_lte, 1, 3, 2));
+		M_fx = Matrix_tran(multiply(v_A, A_fx, 1, 3, 3));
+		D_fx = Matrix_tran(multiply(v_B, B_fx, 1, 3, 2));
+		for (int i = 0; i < 3; i++) {
+			m_lte[i][0] = M_lte[i][0];
+			d_lte[i][0] = D_lte[i][0];
+			m_fx[i][0] = M_fx[i][0];
+			d_fx[i][0] = D_fx[i][0];
+		}
+		if (strcmp(servicetype, "VBR") == 0) {
+			Score_lte = 0.5*multiply1(w_A2, m_lte, 3) + 0.5*multiply1(w_A2, d_lte, 3);
+			Score_fx = 0.5*multiply1(w_A2, m_fx, 3) + 0.5*multiply1(w_A2, d_fx, 3);
+		}
+		else if (strcmp(servicetype,"CBR")==0) {	
+			double t1 = multiply1(w_A3, m_lte, 3);
+			double t2 = multiply1(w_A3, d_lte, 3);
+			double t3 = multiply1(w_A3, m_fx, 3);
+			double t4 = multiply1(w_A3, d_fx, 3);
+
+			Score_lte = 0.5*multiply1(w_A3, m_lte, 3) + 0.5*multiply1(w_A3,d_lte,3);
+			Score_fx  = 0.5*multiply1(w_A3, m_fx, 3) + 0.5*multiply1(w_A3, d_fx, 3);
+			ofstream outfilea;
+			outfilea.open("r.csv", ios::app | ios::out);
+			outfilea << Score_lte << "," << Score_fx << endl;
+			outfilea.close();
+		}
+		else if (strcmp(servicetype, "FTP_GEN") == 0) {
+			Score_lte = 0.5*multiply1(w_A4, m_lte, 3) + 0.5*multiply1(w_A4, d_lte, 3);
+			Score_fx = 0.5*multiply1(w_A4, m_fx, 3) + 0.5*multiply1(w_A4, d_fx, 3);
+		}
+	}	
+	
+	if ((Score_fx - Score_lte) > 0.1) {
+		return TRUE;
+	}
+	return FALSE;
+}
+//M:输出矩阵的行数
+//N:输出矩阵的列数
+//K:一个乘数矩阵的列数，也是另一个乘数矩阵的行数，比如1*3 3*2   M= 1 N= 2 K=3
+static double** multiply(double A[][3], double B[][3],int M,int N,int K) {  
+	double **C = new double*[M];
+	for (int i = 0; i < M; i++)
+		C[i] = new double[N];
+	for (int m = 0; m < M; m++)
+		for (int n = 0; n < N; n++) {
+			C[m][n] = 0;
+			for (int k = 0; k < K; k++)
+				C[m][n] += A[m][k] * B[k][n];
+		}
+	return C;
+};
+
+static double multiply1(double A[1][3], double B[][1], int L) {
+	double C = 0.0;
+	for (int i = 0; i < L; i++){
+		C += A[0][i] * B[i][0];
+	}
+	return C;
+};
+static double** Matrix_tran(double **A) {
+	double **B = new double*[3];
+	for (int i = 0; i < 3; i++)
+		B[i] = new double[1];
+	for (int i = 0; i < 1; i++)
+	{
+		for (int j = 0; j < 3; j++)
+			B[j][i]= A[i][j] ;
+	}
+	return B;
 }

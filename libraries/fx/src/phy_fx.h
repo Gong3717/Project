@@ -12,6 +12,15 @@
 #define SPHY_FX_TRANSBLOCK_SIZE_5MHZ_BYTE (1792)
 #define SPHY_FX_TRANSBLOCK_SIZE_2500KHZ_BYTE (896)
 
+//gss
+class Temp_fx_rxpower
+{
+public:
+	static double FXRSS[10][2];
+	static Int64  temp_time[10][2];
+protected:
+private:
+};
 
 typedef enum {
 	PHY_FX_POWER_OFF,

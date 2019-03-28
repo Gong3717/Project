@@ -89,6 +89,15 @@ void EpcLtePrintStat(
 			ANY_DEST,
 			-1,
 			buf);
+		//gss xd
+		sprintf(buf, "Number of xdhandover  = %u",
+			epc->statData.numXdHandover);
+		IO_PrintStat(node,
+			"application",
+			"LTE handover",
+			ANY_DEST,
+			-1,
+			buf);
 
         sprintf(buf, "Number of handover request sent = %u",
             epc->statData.numHandoverRequestSent);

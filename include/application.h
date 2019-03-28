@@ -251,7 +251,8 @@ enum SDHEle_AppType
 	Normal_VBR = 4,
 	Normal_VoIP = 5,
 	Traffic_gen = 6,
-	Normal_VOIP = 7
+	Normal_VOIP = 7,
+	Ftp_gen =8     //gss
 };
 
 // /**

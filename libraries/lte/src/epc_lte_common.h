@@ -54,6 +54,8 @@ typedef struct struct_epc_stat_data{
 	UInt32 numXdHandoverRequestReceived;  //gss xd
 	UInt32 numXdHandoverRequestAckSent;  //gss xd
 	UInt32 numXdHandoverRequestAckReceived;//gss xd
+	UInt32 numXdHandover;//gss 
+	UInt32 numXdHandoverFailed; //gss
     UInt32 numHandoverRequestSent;
     UInt32 numHandoverRequestReceived;
     UInt32 numHandoverRequestAckSent;
@@ -80,6 +82,8 @@ public:
 	  numXdHandoverRequestReceived(0),  //gss xd
 	  numXdHandoverRequestAckSent(0),  //gss xd
 	  numXdHandoverRequestAckReceived(0),//gss xd
+	  numXdHandover(0),//gss 
+	  numXdHandoverFailed(-1),  //gss
       numHandoverRequestSent(0),
       numHandoverRequestReceived(0),
       numHandoverRequestAckSent(0),

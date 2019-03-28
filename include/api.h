@@ -1853,4 +1853,9 @@ enum DestinationType {
     DEST_TYPE_BROADCAST = 2
 };
 
+//hjx
+class NodeLinkStation {
+public:
+	static int NodeLinkdirection[10];
+};
 #endif /*API_H*/

@@ -225,8 +225,8 @@ EpcLteAppProcessEvent(Node *node, Message *msg)
 		Layer3LteReceiveXdHoCommand(node,
 			arg->xdhoParticipator.srcEnbRnti.interfaceIndex,
 			arg->xdhoParticipator);
-		//ÇÐ»»µ½FXÍøÂç
-		//XdUpadateUeRoute(arg->xdhoParticipator.node, 1);
+		//ÇÐ»»µ½Ä¿±êÍøÂç
+		XdUpadateUeRoute(arg->xdhoParticipator.node, 1);
 		break;
 	}
     default:
@@ -942,14 +942,26 @@ void XdUpadateUeRoute(Node* node, int interfaceIndex) {
 	NodeAddress destMask;
 	NodeAddress nextHop;
 	int outgoingInterfaceIndex;
-	LteStationType stationType =
-		LteLayer2GetStationType(node, interfaceIndex);
-	if (stationType == LTE_STATION_TYPE_UE) {
+	//LteStationType stationType =
+	//	LteLayer2GetStationType(node, interfaceIndex);
+	if (( node->nodeId == 2) &&
+		(NodeLinkStation::NodeLinkdirection[node->nodeId - 1] == 0)) {
 		destAddr = 0;   // default route
 		destMask = 0;   // default route
 		nextHop = 3187672066;
 		outgoingInterfaceIndex = 0;
+		NodeLinkStation::NodeLinkdirection[node->nodeId - 1] = 1;
 	}
+	//(stationType == LTE_STATION_TYPE_UE) &&
+	//else if ((node->nodeId == 2) &&
+	//	(NodeLinkStation::NodeLinkdirection[node->nodeId - 1] == 1))
+	//{
+	//	destAddr = 0;   // default route
+	//	destMask = 0;   // default route
+	//	nextHop = 3187672834;
+	//	outgoingInterfaceIndex = 1;
+	//	NodeLinkStation::NodeLinkdirection[node->nodeId - 1] = 0;
+	//}
 	NetworkRoutingProtocolType type = ROUTING_PROTOCOL_STATIC;
 	int cost = 0;
 

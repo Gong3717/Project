@@ -38,6 +38,7 @@
 #include "layer3_lte_measurement.h"
 #include "layer3_lte.h"
 #include "phy_fx.h" //gss xd
+#include <queue>    //gss
 
 ///////////////////////////////////////////////////////////////
 // swtiches
@@ -160,6 +161,37 @@ class LteExponentialMean;
 #define PHY_LTE_DEFAULT_OFFSET_SUBFRAME_INTRA_FREQ          0
 #define PHY_LTE_DEFAULT_FILTER_COEF_RSRP                    4
 #define PHY_LTE_DEFAULT_FILTER_COEF_RSRQ                    4
+
+// add by hjx——storage nodeid rxpower
+class Temp_rxpower
+{
+public:
+	static double RSS[10][2];
+	static Int64  temp_time[10][2];
+protected:
+private:
+};
+class Temp_metrics
+{
+public:
+	static double delay_lte[12];
+	static double delay_fx[12];
+	static double jet_lte[12];
+	static double jet_fx[12];
+	static int index;
+	static Int64  store_time;
+	static Int64  interval;
+	static int sizeps;   //每秒appdata队列长度
+protected:
+private:
+};
+class Temp_MeasReport
+{
+public:
+	static Int64 temp_time[10][2];
+protected:
+private:
+};
 
 // /**
 // CONSTANT    :: PHY_LTE_DEFAULT_CQI_SNR_TABLE
@@ -2253,6 +2285,7 @@ void PhyLteNotifyPacketDropForMsgInRxPackedMsg(
                                     double pathloss_dB,
                                     Message* msgInRxPackedMsg);
 #endif // ADDON_DB
+
 #endif /* _PHY_LTE_H_ */
 
 

@@ -147,8 +147,8 @@ void Layer3FxAddRoute(Node * node, int interfaceIndex, const fxRnti & oppositeRn
 		destAddr = 0;   // default route
 		destMask = 0;   // default route
 		//destAddr =
-			MAPPING_GetInterfaceAddressForInterface(
-				node, oppositeRnti.nodeId, oppositeRnti.interfaceIndex);  //YH - XG
+		//	MAPPING_GetInterfaceAddressForInterface(
+		//		node, oppositeRnti.nodeId, oppositeRnti.interfaceIndex);  //YH - XG
 		//destAddr = 3187672578;   //YH - CN
 		//destMask = ANY_ADDRESS;
 		nextHop =
@@ -1109,14 +1109,14 @@ void Layer3FxInitHandoverSchedule(Node * node, UInt32 interfaceIndex, const Node
 }
 
 //gss xd
-void Layer3XdHandOverDecision(
-	Node *node,
-	UInt32 interfaceIndex,
-	const fxRnti& targetRnti) 
-{
-	Layer3FxAddRoute(node, interfaceIndex, targetRnti);
-	Layer3FxSetTimerForRrc(node, interfaceIndex, MSG_RRC_FX_XdHandoverScheduleTimerExpired, RRC_FX_DEFAULT_XD_HANDOVER_TIME);
-}
+//void Layer3XdHandOverDecision(
+//	Node *node,
+//	UInt32 interfaceIndex,
+//	const fxRnti& targetRnti) 
+//{
+//	Layer3FxAddRoute(node, interfaceIndex, targetRnti);
+//	Layer3FxSetTimerForRrc(node, interfaceIndex, MSG_RRC_FX_XdHandoverScheduleTimerExpired, RRC_FX_DEFAULT_XD_HANDOVER_TIME);
+//}
 
 //gss xd
 void Layer3FxReceiveXdHoReq(
