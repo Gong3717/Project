@@ -181,6 +181,8 @@ public:
 	static int index;
 	static Int64  store_time;
 	static Int64  interval;
+	static BOOL flag_rsaw;
+	static BOOL flag_xd;
 	static int sizeps;   //每秒appdata队列长度
 protected:
 private:

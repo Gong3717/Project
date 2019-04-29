@@ -579,14 +579,14 @@ void PhyLteDebugOutputRxMsgInfoList(Node* node,
 //gss xd
 static void XdUpadateUeRoute(Node* node, int interfaceIndex, const LteRnti& oppositeRnti);
 static double * XdRssDecision(Node* node);
-//static double * XdMadmDecision(Node *node,double* lte_metrics,double* fx_metrics);
-static BOOL XdSAWDecision();
+static BOOL XdSAWDecision(double simtime);
 //static double * GrayModel(double arr[], int size);  //GM(1,1)
 static double *GrayModel(queue<double> Q, int size);
 static BOOL XdRealTimeSAWDecision();
-static double** multiply(double A[][3], double B[][3], int M, int N, int K);
+static double** multiply(double A[][3], double B[][4], int M, int N, int K);
+static double** multiply(double A[][2], double B[][4], int M, int N, int K);
 static double** Matrix_tran(double **A);
-static double multiply1(double A[1][3], double B[][1], int L);
+static double multiply1(double A[1][4], double B[][1], int L);
 												  
 extern deque<APPStatsNew> g_APPStatsNew_deque;   //gss xd
 
@@ -6606,42 +6606,34 @@ BOOL PhyLteCheckRxDisconnected(Node* node,
 
 //gss 
 Int64  Temp_metrics::store_time = 0;
+BOOL Temp_metrics::flag_xd = FALSE;
 BOOL GetXdHandoverDecision(Node* node,double time) {	
-	/* RSS algorithm
-	********************/
-	/*double *rss_arr;
-	rss_arr = XdRssDecision(node);
-	double lte = *(rss_arr + 1);
-	double fx = *(rss_arr + 2);
-	if ( lte < fx ) {
-		return TRUE;
-	}*/
-
 	double curtime = getSimTime(node) / SECOND;
 	double lte_rss = Temp_rxpower::RSS[1][1];
 	double fx_rss = Temp_fx_rxpower::FXRSS[1][1];
+	//BOOL F = Temp_metrics::flag_xd;
 	/**************** RSS algorithm *******************/
-	/*if ((curtime - Temp_metrics::store_time) >= 3 && curtime > 11) {
+	/*if ((curtime - Temp_metrics::store_time) >= 3 && curtime > 9) {
 		if (lte_rss < fx_rss) {
-			return TRUE;
+			Temp_metrics::flag_xd = TRUE;
+		}
+		else {
+			Temp_metrics::flag_xd = FALSE;
 		}
 		Temp_metrics::store_time = curtime;
 	}*/
-	/*if ((curtime - Temp_metrics::store_time) >= 3 && curtime > 11) {
-		BOOL F = XdSAWDecision();
-		if (F) {
-			return TRUE;
-		}
+	/**************** SAW algorithm *******************/
+	/*if ((curtime - Temp_metrics::store_time) >= 3 && curtime > 9) {
+		Temp_metrics::flag_xd = XdSAWDecision(curtime);
 		Temp_metrics::store_time = curtime;
 	}*/
-	if ((curtime - Temp_metrics::store_time )>= 1) {
-		  BOOL F = XdRealTimeSAWDecision();
-		  if (F) {
-			  return TRUE;
-		  }
-		  Temp_metrics::store_time = curtime;
-	  }
-	return FALSE;
+	/**************** Sequential Growth SAW algorithm *******************/
+	if ((curtime - Temp_metrics::store_time) >= 1) {
+		Temp_metrics::flag_xd = XdRealTimeSAWDecision();
+		Temp_metrics::store_time = curtime;
+	}
+	/******************The End ******************/
+	return Temp_metrics::flag_xd;
 }
 
 //hjx
@@ -6943,19 +6935,21 @@ BOOL PhyLteGetMessageControlInfo(Node* node,
 			double lteTxPower = xdmr->phylte->maxTxPower_dBm;
 			EpcData* epc = EpcLteGetEpcData(node);
 			double curtime = getSimTime(node) / SECOND;
-			if (ueNode->nodeId == 2) {    //星地终端用户才调用决策函数
+			ofstream ofile;
+			ofile.open("numho.csv", ios::app | ios::out);
+			if (ueNode->nodeId == 2 ) {    //星地终端用户才调用决策函数
 				BOOL flag = GetXdHandoverDecision(ueNode, curtime);
 				if (flag)
 				{
-					if (NodeLinkStation::NodeLinkdirection[ueRnti.nodeId - 1] == 0)
+					if (NodeLinkStation::NodeLinkdirection[ueRnti.nodeId - 1] == 0)  
 					{
 						//发送星地切换需求指令  LTE切换到FX
 						EpcXdAppSend_HandoverRequried(node, interfaceIndex, ueRnti, LteLayer2GetRnti(node, interfaceIndex), ueNode);
 						//XdUpadateUeRoute(ueNode, 1, LteLayer2GetRnti(node, interfaceIndex)); //更新用户的路由表切换到FX网络
 						epc->statData.numXdHandover++;
+						ofile << curtime << "," << epc->statData.numXdHandover << endl;
 
 					}
-					//epc->statData.numXdHandoverFailed++;
 				}
 				else if (NodeLinkStation::NodeLinkdirection[ueRnti.nodeId - 1] == 1)
 				{
@@ -6963,7 +6957,9 @@ BOOL PhyLteGetMessageControlInfo(Node* node,
 					//EpcXdAppSend_HandoverRequried(node, interfaceIndex, ueRnti, LteLayer2GetRnti(node, interfaceIndex), ueNode);
 					XdUpadateUeRoute(ueNode, 1, LteLayer2GetRnti(node, interfaceIndex)); //更新用户的路由表切换到FX网络
 					epc->statData.numXdHandover++;
+					ofile << curtime << "," << epc->statData.numXdHandover << endl;
 				}
+				ofile.close();
 			}	
 			
 		}
@@ -8710,9 +8706,9 @@ void PhyLteSignalArrivalFromChannel(Node* node,
 			Temp_rxpower::RSS[node->nodeId - 1][1] = lte_rxPower_dBm;
 			Temp_rxpower::temp_time[node->nodeId - 1][1] = getSimTime(node);
 			double time = getSimTime(node) / SECOND;
-			ofstream outfile("LTE_RSS.txt", ofstream::app);
+			/*ofstream outfile("LTE_RSS.txt", ofstream::app);
 			outfile << lte_rxPower_dBm << endl;
-			outfile.close();
+			outfile.close();*/
 		}
 	}
 
@@ -12460,7 +12456,7 @@ queue<double> rss_fx;
 queue<double> thr_lte;
 queue<double> thr_fx;
 
-static BOOL XdSAWDecision() {
+static BOOL XdSAWDecision(double simtime) {
 	
 	deque<APPStatsNew>::iterator it = g_APPStatsNew_deque.begin();
 	double M[2][2] = { 0.0 };
@@ -12469,80 +12465,139 @@ static BOOL XdSAWDecision() {
 	double lte_rss = 0.0;
 	double fx_rss = 0.0;
 	char* servicetype = "";
+	int session = 0;
 	for (int i = Temp_metrics::sizeps; i < g_APPStatsNew_deque.size(); i++) {
-		if (g_APPStatsNew_deque[i].DestId == 10) {
-			th_lte = th_lte + g_APPStatsNew_deque[i].AppThroughput; //获取LTE网络每秒的流量
-			if (maxdelay_lte < g_APPStatsNew_deque[i].AppDelay) {
-				maxdelay_lte = g_APPStatsNew_deque[i].AppDelay;  //获取LTE网络时延、时延抖动最大值
+		if (g_APPStatsNew_deque[i].simTime == simtime) {
+			if (g_APPStatsNew_deque[i].DestId == 10 || (g_APPStatsNew_deque[i].DestId == 9 && NodeLinkStation::NodeLinkdirection[1] == 0)
+				|| (g_APPStatsNew_deque[i].DestId == 8 && NodeLinkStation::NodeLinkdirection[1] == 0)) {
+				th_lte = th_lte + g_APPStatsNew_deque[i].AppThroughput; //获取LTE网络每秒的流量
+				if (maxdelay_lte < g_APPStatsNew_deque[i].AppDelay) {
+					maxdelay_lte = g_APPStatsNew_deque[i].AppDelay;  //获取LTE网络时延、时延抖动最大值
+				}
+				if (maxjet_lte < g_APPStatsNew_deque[i].AppJet) {
+					maxjet_lte = g_APPStatsNew_deque[i].AppJet;
+				}
 			}
-			if (maxjet_lte < g_APPStatsNew_deque[i].AppJet) {
-				maxjet_lte = g_APPStatsNew_deque[i].AppJet;
+			else if (g_APPStatsNew_deque[i].DestId == 4 || (g_APPStatsNew_deque[i].DestId == 9 && NodeLinkStation::NodeLinkdirection[1] == 1
+				|| (g_APPStatsNew_deque[i].DestId == 8 && NodeLinkStation::NodeLinkdirection[1] == 0))) {
+				th_fx = th_fx + g_APPStatsNew_deque[i].AppThroughput;   //获取FX网络每秒的流量
+				if (maxdelay_fx < g_APPStatsNew_deque[i].AppDelay) {   //获取FX网络每秒时延、时延抖动最大值
+					maxdelay_fx = g_APPStatsNew_deque[i].AppDelay;
+				}
+				if (maxjet_fx < g_APPStatsNew_deque[i].AppJet) {
+					maxjet_fx = g_APPStatsNew_deque[i].AppJet;
+				}
 			}
-		}
-		else if (g_APPStatsNew_deque[i].DestId == 4) {
-			th_fx = th_fx + g_APPStatsNew_deque[i].AppThroughput;   //获取FX网络每秒的流量
-			if (maxdelay_fx < g_APPStatsNew_deque[i].AppDelay) {   //获取FX网络每秒时延、时延抖动最大值
-				maxdelay_fx = g_APPStatsNew_deque[i].AppDelay;
+
+			if (g_APPStatsNew_deque[i].DestId == 9) {
+				servicetype = g_APPStatsNew_deque[i].Servicetype;
+				session = g_APPStatsNew_deque[i].DestId;
 			}
-			if (maxjet_fx < g_APPStatsNew_deque[i].AppJet) {
-				maxjet_fx = g_APPStatsNew_deque[i].AppJet;
+			if (g_APPStatsNew_deque[i].DestId == 8) {
+				session = g_APPStatsNew_deque[i].DestId;
 			}
-		}
-		else if (g_APPStatsNew_deque[i].DestId == 9) {
-			servicetype = g_APPStatsNew_deque[i].Servicetype;
 		}
 	}
 	Temp_metrics::sizeps = g_APPStatsNew_deque.size();
-	lte_rss = Temp_rxpower::RSS[1][1];
-	fx_rss = Temp_fx_rxpower::FXRSS[1][1];
+	lte_rss = IN_DB(NON_DB(Temp_rxpower::RSS[1][1])*pow(10.0, 12));
+	fx_rss = IN_DB(NON_DB(Temp_fx_rxpower::FXRSS[1][1])*pow(10.0, 12));
 	double result[6] = { 0.0 };
-	result[0] = maxdelay_lte;  //lte delay
-	result[1] = maxjet_lte;    //lte jet
-	result[2] = th_lte;        //fx th
-	result[3] = maxdelay_fx;   //fx delay
-	result[4] = maxjet_fx;     //fx jet
-	result[5] = th_fx;         //fx th
-	//if (result[0] > 0) {
-	//	/*int t = Temp_metrics::index++;
-	//	if (t < 12) {
-	//		Temp_metrics::delay_lte[t] = maxdelay_lte;
-	//		Temp_metrics::delay_fx[t] = maxdelay_fx;
-	//		Temp_metrics::jet_lte[t] = maxjet_lte;
-	//		Temp_metrics::jet_fx[t] = maxjet_fx;
-	//	}*/
-	//	delay_lte.push(maxdelay_lte);   //取两个网络的10个属性值进行预测后两个时刻的属性值
-	//	if (delay_lte.size()>10) {
-	//		delay_lte.pop();
-	//	}
-	//	delay_fx.push(maxdelay_fx);
-	//	if (delay_fx.size() > 10) {
-	//		delay_fx.pop();
-	//	}
-	//	jet_lte.push(maxjet_lte);
-	//	if (jet_lte.size() > 10) {
-	//		jet_lte.pop();
-	//	}
-	//	jet_fx.push(maxjet_fx);
-	//	if (jet_fx.size() > 10) {
-	//		jet_fx.pop();
-	//	}
-	//}
-	double Score_lte = 0.0; double Score_fx = 0.0;
-	double w_A1[1][3] = { 0.0629,0.6716,0.2654 };  //会话类    
-	double w_A2[1][3] = { 0.1047,0.2583,0.6370 }; //流类
-	double w_A3[1][3] = { 0.6942,0.2103,0.0955 }; //交互类
-	double w_A4[1][3] = { 0.8182,0.0909,0.0909 }; //背景类
-	if (strcmp(servicetype, "VBR") == 0) {
-		Score_lte = w_A2[0][0] * lte_rss + w_A2[0][1] * result[0] + w_A2[0][2] * result[1];
-		Score_fx  = w_A2[0][0] * fx_rss + w_A2[0][1] * result[3] + w_A2[0][2] * result[4];
+	result[0] = exp(-0.0139*maxdelay_lte);  //lte delay
+	result[1] = exp(-0.0277*maxjet_lte);    //lte jet
+	result[2] = 1.0 -th_lte/50400000;
+	result[3] = exp(-0.0139*maxdelay_fx);   //fx delay
+	result[4] = exp(-0.0277*maxjet_fx);     //fx jet
+	result[5] = 1.0- th_fx/ 165000000;         //fx th
+
+	double A[8] = { 0.0 };
+	/*if (lte_rss > fx_rss) {
+		lte_rss = 1; fx_rss = 0;
+		A[0] = 1; A[4] = 0;
 	}
-	else if (strcmp(servicetype, "CBR") == 0) {
-		Score_lte = w_A3[0][0] * lte_rss + w_A3[0][1] * result[0] + w_A3[0][2] * result[1];
-		Score_fx  = w_A3[0][0] * fx_rss + w_A3[0][1] * result[3] + w_A3[0][2] * result[4];
+	else {
+		lte_rss = 0; fx_rss = 1;
+		A[0] = 0; A[4] = 1;
+	}
+	if (result[0] > result[3]) {
+		result[0] = 0; result[3] = 1;
+		A[1] = 0; A[5] = 1;
+	}
+	else {
+		result[0] = 1; result[3] = 0;
+		A[1] = 1; A[5] = 0;
+	}
+	if (result[1] > result[4]) {
+		result[1] = 0; result[4] = 1;
+		A[2] = 0; A[6] = 1;
+	}
+	else {
+		result[1] = 1; result[4] = 0;
+		A[2] = 1; A[6] = 0;
+	}
+	if (result[2] > result[5]) {
+		result[2] = 1; result[5] = 0;
+		A[3] = 1; A[7] = 0;
+	}
+	else {
+		result[2] = 0; result[5] = 1;
+		A[3] = 0; A[7] = 1;
+	}*/
+
+	//矩阵0-1标准化
+	//double A[8] = {0.0};
+	/*A[0] = lte_rss / (fabs(lte_rss) + fabs(fx_rss));        A[4] = fx_rss / (fabs(lte_rss) + fabs(fx_rss));
+	A[1] = result[0] / (fabs(result[0]) + fabs(result[3])); A[5] = result[3] / (fabs(result[0]) + fabs(result[3]));
+	A[2] = result[1] / (fabs(result[1]) + fabs(result[4])); A[6] = result[4] / (fabs(result[1]) + fabs(result[4]));
+	A[3] = result[2] / (fabs(result[2]) + fabs(result[5])); A[7] = result[5] / (fabs(result[2]) + fabs(result[5]));*/
+	A[0] = lte_rss / (fabs(lte_rss) + fabs(fx_rss));        A[4] = fx_rss / (fabs(lte_rss) + fabs(fx_rss));
+	A[1] = result[0]; A[5] = result[3];
+	A[2] = result[1]; A[6] = result[4];
+	A[3] = result[2] / (fabs(result[2]) + fabs(result[5])); A[7] = result[5] / (fabs(result[2]) + fabs(result[5]));
+	double Score_lte = 0.0; double Score_fx = 0.0;
+	//double w_A1[1][3] = { 0.0629,0.6716,0.2654 };  //会话类    
+	//double w_A2[1][3] = { 0.1047,0.2583,0.6370 }; //流类
+	//double w_A3[1][3] = { 0.6942,0.2103,0.0955 }; //交互类
+	//double w_A4[1][3] = { 0.8182,0.0909,0.0909 }; //背景类
+
+	//double w_A1[1][4] = { 0.0665,0.5883,0.2574,0.0878 };  //会话类    
+	//double w_A2[1][4] = { 0.0562,0.1239,0.3559,0.4640 }; //流类
+	//double w_A3[1][4] = { 0.2698,0.0862,0.0535,0.5905 }; //交互类
+	//double w_A4[1][4] = { 0.3279,0.0467,0.0467,0.5786 }; //背景类
+
+	double w_A1[1][4] = { 0.5,0.3358,0.1327,0.03145 };  //会话类    
+	double w_A2[1][4] = { 0.5,0.05475,0.2908,0.1545 }; //流类
+	double w_A3[1][4] = { 0.5,0.0744,0.0329,0.3927 }; //交互类
+	double w_A4[1][4] = { 0.5,0.04545,0.04545,0.4091 }; //背景类
+	if (strcmp(servicetype, "VBR") == 0) {
+	
+		/*Score_lte = w_A2[0][0] * (lte_rss / (lte_rss + fx_rss)) + w_A2[0][1] * (result[0]/(result[0]+result[3]))
+			+ w_A2[0][2] *( result[1]/(result[1]+result[4]))  + w_A2[0][3] * (result[2] / (result[2] + result[5]));
+		Score_fx = w_A2[0][0] * (fx_rss / (lte_rss + fx_rss)) + w_A2[0][1] * (result[3] / (result[0] + result[3]))
+			+ w_A2[0][2] * (result[4] / (result[1] + result[4])) + w_A2[0][3] * (result[5] / (result[2] + result[5]));*/
+		Score_lte = w_A2[0][0] * A[0] + w_A2[0][1] * A[1] + w_A2[0][2] * A[2] + w_A2[0][3] * A[3];
+		Score_fx = w_A2[0][0] * A[4] + w_A2[0][1] * A[5] + w_A2[0][2] * A[6] + w_A2[0][3] * A[7];
+	}
+	else if (strcmp(servicetype, "CBR") == 0 && session == 9) {
+		
+		/*Score_lte = w_A3[0][0] * (lte_rss / (lte_rss + fx_rss)) + w_A3[0][1] * (result[0] / (result[0] + result[3]))
+			+ w_A3[0][2] * (result[1] / (result[1] + result[4])) + w_A3[0][3] * (result[2] / (result[2] + result[5]));
+		Score_fx = w_A3[0][0] * (fx_rss / (lte_rss + fx_rss)) + w_A3[0][1] * (result[3] / (result[0] + result[3]))
+			+ w_A3[0][2] * (result[4] / (result[1] + result[4])) + w_A3[0][3] * (result[5] / (result[2] + result[5]));*/
+		Score_lte = w_A3[0][0] * A[0] + w_A3[0][1] * A[1] + w_A3[0][2] * A[2] + w_A3[0][3] * A[3];
+		Score_fx = w_A3[0][0] * A[4] + w_A3[0][1] * A[5] + w_A3[0][2] * A[6] + w_A3[0][3] * A[7];
 	}
 	else if (strcmp(servicetype, "FTP_GEN") == 0) {
-		Score_lte = w_A4[0][0] * lte_rss + w_A4[0][1] * result[0] + w_A4[0][2] * result[1];
-		Score_fx = w_A4[0][0] * fx_rss + w_A4[0][1] * result[3] + w_A4[0][2] * result[4];
+		
+		/*Score_lte = w_A4[0][0] * (lte_rss / (lte_rss + fx_rss)) + w_A4[0][1] * (result[0] / (result[0] + result[3]))
+			+ w_A4[0][2] * (result[1] / (result[1] + result[4])) + w_A4[0][3] * (result[2] / (result[2] + result[5]));
+		Score_fx = w_A4[0][0] * (fx_rss / (lte_rss + fx_rss)) + w_A4[0][1] * (result[3] / (result[0] + result[3]))
+			+ w_A4[0][2] * (result[4] / (result[1] + result[4])) + w_A4[0][3] * (result[5] / (result[2] + result[5]));*/
+		Score_lte = w_A4[0][0] * A[0] + w_A4[0][1] * A[1] + w_A4[0][2] * A[2] + w_A4[0][3] * A[3];
+		Score_fx = w_A4[0][0] * A[4] + w_A4[0][1] * A[5] + w_A4[0][2] * A[6] + w_A4[0][3] * A[7];
+	}
+	else if (session == 8) {
+		Score_lte = w_A1[0][0] * A[0] + w_A1[0][1] * A[1] + w_A1[0][2] * A[2] + w_A1[0][3] * A[3];
+		Score_fx = w_A1[0][0] * A[4] + w_A1[0][1] * A[5] + w_A1[0][2] * A[6] + w_A1[0][3] * A[7];
 	}
 	if (Score_lte < Score_fx) {
 		return TRUE;
@@ -12552,23 +12607,22 @@ static BOOL XdSAWDecision() {
 
 //static double *GrayModel(double arr[], int size) 
 static double *GrayModel(queue<double> Q, int size) {
-
-	double arr[10] = { 0.0 };
+	double arr[7] = { 0.0 };
 	if (Q.size() > 0) {
-		for (int i = 0; i < 10; i++) {
+		for (int i = 0; i < 7; i++) {
 			arr[i] = Q.front();
 			Q.pop();
 		}
 	}
 	// 预测模型函数   用10个原始数据，预测后两个数据
-	int tsize = 10 - 1;
-	double arr1[9] = { 0.0 }; // 经过一次累加数组
+	int tsize = 7 - 1;
+	double arr1[7] = { 0.0 }; // 经过一次累加数组
 	double sum = 0;
-	for (int i = 0; i < 15; i++) {
+	for (int i = 0; i < 7; i++) {
 		sum += arr[i];
 		arr1[i] = sum;
 	}
-	double arr2[8] = { 0.0 };// arr1的紧邻均值数组
+	double arr2[6] = { 0.0 };// arr1的紧邻均值数组
 	for (int i = 0; i < tsize; i++) {
 		arr2[i] = (double)(arr1[i] + arr1[i + 1]) / 2;
 	}
@@ -12579,7 +12633,7 @@ static double *GrayModel(queue<double> Q, int size) {
 	/*
 	* 下面建立向量B, B是5行2列的矩阵， 相当于一个二维数组。
 	*/
-	double B[9][2] = { 0.0 };
+	double B[6][2] = { 0.0 };
 	for (int i = 0; i < tsize; i++) {
 		for (int j = 0; j < 2; j++) {
 			if (j == 1)
@@ -12591,7 +12645,7 @@ static double *GrayModel(queue<double> Q, int size) {
 	/*
 	* 下面建立向量YN
 	*/
-	double YN[9][1] = { 0.0 };
+	double YN[6][1] = { 0.0 };
 	for (int i = 0; i < tsize; i++) {
 		for (int j = 0; j < 1; j++) {
 			YN[i][j] = arr[i + 1];
@@ -12600,7 +12654,7 @@ static double *GrayModel(queue<double> Q, int size) {
 	/*
 	* B的转置矩阵BT,2行5列的矩阵
 	*/
-	double BT[2][9] = { 0.0 };
+	double BT[2][6] = { 0.0 };
 	for (int i = 0; i < 2; i++) {
 		for (int j = 0; j < tsize; j++) {
 			BT[i][j] = B[j][i];
@@ -12643,7 +12697,7 @@ static double *GrayModel(queue<double> Q, int size) {
 	*
 	* 下面先求A矩阵
 	*/
-	double A[2][9] = { 0.0 };
+	double A[2][6] = { 0.0 };
 	for (int i = 0; i < 2; i++) {// rows of B_2T
 		{
 			for (int j = 0; j < tsize; j++)// cloums of BT
@@ -12681,26 +12735,51 @@ static double *GrayModel(queue<double> Q, int size) {
 	//int i = T;// 读取一个数值
 	//double Y = (arr[0] - b / a)*exp( -a * (i + 1)) - (arr[0] - b / a)*exp( -a * (i));
 	//预测后续数据,这里仅预测后两个，假设训练数据长度为10
-	double F[12] = { 0.0 };
+	double F[9] = { 0.0 };
 	F[0] = arr[0];
-	for (int i = 1; i < 12; i++) {
+	for (int i = 1; i < 9; i++) {
 		F[i] = (arr[0] - b / a)*exp(-a * (i)) + b / a;
 	}
 
 	//对数列 F 累减还原,得到预测出的数据
 	
 	//double G[12] = { 0.0 };
-	double * G = new double[12];  //分配地址空间
-	G[0] = arr[0];
-	ofstream outfile1, outfile2, outfile3, outfile4, outfile5, outfile6;
+	ofstream outfile1, outfile2, outfile3, outfile4, outfile5, outfile6, outfile7, outfile8;
 	outfile1.open("ycltedelay.csv", ios::app | ios::out); //如果没有文件则创建文件，如果有文件，则在文件尾追加 
 	outfile2.open("ycfxdelay.csv", ios::app | ios::out);
 	outfile3.open("ycltejet.csv", ios::app | ios::out);
 	outfile4.open("ycfxjet.csv", ios::app | ios::out);
 	outfile5.open("yclterss.csv", ios::app | ios::out);
 	outfile6.open("ycfxrss.csv", ios::app | ios::out);
-	("yuce.txt", ofstream::app);
-	for (int i = 1; i < 12; i++) {
+	outfile7.open("ycltethr.csv", ios::app | ios::out);
+	outfile8.open("ycfxthr.csv", ios::app | ios::out);
+	double * G = new double[9];  //分配地址空间
+	G[0] = arr[0];
+	if (size == 1) {
+		outfile1 << arr[0] << "," << G[0] << endl;
+	}
+	else if (size == 2) {
+		outfile2 << arr[0] << "," << G[0] << endl;
+	}
+	else if (size == 3) {
+		outfile3 << arr[0] << "," << G[0] << endl;
+	}
+	else if (size == 4) {
+		outfile4 << arr[0] << "," << G[0] << endl;
+	}
+	else if (size == 5) {
+		outfile5 << arr[0] << "," << G[0] << endl;
+	}
+	else if (size == 6) {
+		outfile6 << arr[0] << "," << G[0] << endl;
+	}
+	else if (size == 7) {
+		outfile7 << arr[0] << "," << G[0] << endl;
+	}
+	else if (size == 8) {
+		outfile8 << arr[0] << "," << G[0] << endl;
+	}
+	for (int i = 1; i < 9; i++) {
 		G[i] = F[i] - F[i - 1];
 		if (size == 1) {
 			outfile1 << arr[i] << "," << G[i] << endl;
@@ -12719,14 +12798,22 @@ static double *GrayModel(queue<double> Q, int size) {
 		}
 		else if (size == 6) {
 			outfile6 << arr[i] << "," << G[i] << endl;
-		}		
+		}
+		else if (size == 7) {
+			outfile7 << arr[i] << "," << G[i] << endl;
+		}
+		else if (size == 8) {
+			outfile8 << arr[i] << "," << G[i] << endl;
+		}
 	}
-	outfile1.close(); outfile2.close(); outfile3.close(); outfile4.close(); outfile5.close(); outfile6.close();
+	outfile1.close();
+	outfile2.close(); outfile3.close(); outfile4.close(); outfile5.close(); outfile6.close(); outfile7.close(); outfile8.close();
 	return G;
 }
 
 //gss real-time MADM
-Int64  Temp_metrics::interval = 0;
+Int64  Temp_metrics::interval= 0;
+BOOL Temp_metrics::flag_rsaw = FALSE;
 static BOOL XdRealTimeSAWDecision(){
 	
 	deque<APPStatsNew>::iterator it = g_APPStatsNew_deque.begin();
@@ -12736,9 +12823,11 @@ static BOOL XdRealTimeSAWDecision(){
 	double lte_rss = 0.0;
 	double fx_rss = 0.0;
 	char* servicetype = ""; 
+	int session = 0;
 	for (int i = Temp_metrics::sizeps; i < g_APPStatsNew_deque.size(); i++) {
-		if (g_APPStatsNew_deque[i].DestId == 10) {
-			th_lte = th_lte + g_APPStatsNew_deque[i].AppThroughput; //获取LTE网络每秒的流量
+		if (g_APPStatsNew_deque[i].DestId == 10 || (g_APPStatsNew_deque[i].DestId == 9 && NodeLinkStation::NodeLinkdirection[1] == 0)
+			|| (g_APPStatsNew_deque[i].DestId == 8 && NodeLinkStation::NodeLinkdirection[1] == 0)) {
+			th_lte =  th_lte + g_APPStatsNew_deque[i].AppThroughput; //获取LTE网络每秒的流量
 			if (maxdelay_lte < g_APPStatsNew_deque[i].AppDelay) {
 				maxdelay_lte = g_APPStatsNew_deque[i].AppDelay;  //获取LTE网络时延、时延抖动最大值
 			}
@@ -12746,7 +12835,8 @@ static BOOL XdRealTimeSAWDecision(){
 				maxjet_lte = g_APPStatsNew_deque[i].AppJet;
 			}
 		}
-		else if (g_APPStatsNew_deque[i].DestId == 4) {
+		else if (g_APPStatsNew_deque[i].DestId == 4 || (g_APPStatsNew_deque[i].DestId == 9 && NodeLinkStation::NodeLinkdirection[1] == 1)
+			|| (g_APPStatsNew_deque[i].DestId == 8 && NodeLinkStation::NodeLinkdirection[1] == 0)) {
 			th_fx = th_fx + g_APPStatsNew_deque[i].AppThroughput;   //获取FX网络每秒的流量
 			if (maxdelay_fx < g_APPStatsNew_deque[i].AppDelay) {   //获取FX网络每秒时延、时延抖动最大值
 				maxdelay_fx = g_APPStatsNew_deque[i].AppDelay;
@@ -12755,8 +12845,13 @@ static BOOL XdRealTimeSAWDecision(){
 				maxjet_fx = g_APPStatsNew_deque[i].AppJet;
 			}
 		}
-		else if (g_APPStatsNew_deque[i].DestId == 9) {
+		
+		if (g_APPStatsNew_deque[i].DestId == 9) {
 			servicetype = g_APPStatsNew_deque[i].Servicetype;
+			session = g_APPStatsNew_deque[i].DestId;
+		}
+		if (g_APPStatsNew_deque[i].DestId == 8) {
+			session = g_APPStatsNew_deque[i].DestId;
 		}
 		cur_time = g_APPStatsNew_deque[i].simTime;
 	}
@@ -12765,35 +12860,35 @@ static BOOL XdRealTimeSAWDecision(){
 	fx_rss = Temp_fx_rxpower::FXRSS[1][1];
 	if (maxdelay_lte > 0) {
 		delay_lte.push(maxdelay_lte);   //取两个网络的10个属性值进行预测后两个时刻的属性值
-		if (delay_lte.size()>10) {
+		if (delay_lte.size() > 7) {
 			delay_lte.pop();
 		}
 		delay_fx.push(maxdelay_fx);
-		if (delay_fx.size() > 10) {
+		if (delay_fx.size() > 7) {
 			delay_fx.pop();
 		}
 		jet_lte.push(maxjet_lte);
-		if (jet_lte.size() > 10) {
+		if (jet_lte.size() > 7) {
 			jet_lte.pop();
 		}
 		jet_fx.push(maxjet_fx);
-		if (jet_fx.size() > 10) {
+		if (jet_fx.size() > 7) {
 			jet_fx.pop();
 		}
 		rss_lte.push(lte_rss);
-		if (rss_lte.size() > 10) {
+		if (rss_lte.size() > 7) {
 			rss_lte.pop();
 		}
 		rss_fx.push(fx_rss);
-		if (rss_fx.size() > 10) {
+		if (rss_fx.size() > 7) {
 			rss_fx.pop();
 		}
 		thr_lte.push(th_lte);
-		if (thr_lte.size() > 10) {
+		if (thr_lte.size() > 7) {
 			thr_lte.pop();
 		}
 		thr_fx.push(th_fx);
-		if (thr_fx.size() > 10) {
+		if (thr_fx.size() > 7) {
 			thr_fx.pop();
 		}
 	}
@@ -12805,7 +12900,7 @@ static BOOL XdRealTimeSAWDecision(){
 	double *arr_rss_fx;
 	double *arr_thr_lte;
 	double *arr_thr_fx;
-	if (delay_lte.size() == 10) {
+	/*if (delay_lte.size() == 10) {
 		arr_delay_lte = GrayModel(delay_lte, 1);
 	}
 	if (delay_fx.size() == 10) {
@@ -12828,148 +12923,358 @@ static BOOL XdRealTimeSAWDecision(){
 	}
 	if (thr_fx.size() == 10) {
 		arr_thr_fx = GrayModel(thr_fx, 8);
-	}
+	}*/
 	double Score_lte = 0.0; double Score_fx = 0.0;
-	if (delay_lte.size() == 10 && (cur_time - Temp_metrics::interval) >= 3) {
+	
+	if (delay_lte.size() == 7 && (cur_time - Temp_metrics::interval) >= 3) {
+		if (delay_lte.size() == 7) {
+		arr_delay_lte = GrayModel(delay_lte, 1);
+		}
+		if (delay_fx.size() == 7) {
+		arr_delay_fx = GrayModel(delay_fx, 2);
+		}
+		if (jet_lte.size() == 7) {
+		arr_jet_lte = GrayModel(jet_lte, 3);
+		}
+		if (jet_fx.size() == 7) {
+		arr_jet_fx = GrayModel(jet_fx, 4);
+		}
+		if (rss_lte.size() == 7) {
+		arr_rss_lte = GrayModel(rss_lte, 5);
+		}
+		if (rss_fx.size() == 7) {
+		arr_rss_fx = GrayModel(rss_fx, 6);
+		}
+		if (thr_lte.size() == 7) {
+		arr_thr_lte = GrayModel(thr_lte, 7);
+		}
+		if (thr_fx.size() == 7) {
+		arr_thr_fx = GrayModel(thr_fx, 8);
+		}
 		Temp_metrics::interval = cur_time;
 		//初始化决策矩阵A
-		double A[6][3] = { 0.0 };
-		A[0][0] = lte_rss;  A[0][1] = maxdelay_lte; A[0][2] = maxjet_lte;
-		A[1][0] = fx_rss;   A[1][1] = maxdelay_fx;  A[1][2] = maxjet_fx;
-		A[2][0] = *(arr_rss_lte + 10); A[2][1] = *(arr_delay_lte + 10); A[2][2] = *(arr_jet_lte + 10);
-		A[3][0] = *(arr_rss_fx + 10);  A[3][1] = *(arr_delay_fx + 10);  A[3][2] = *(arr_jet_fx + 10);
-		A[4][0] = *(arr_rss_lte + 11); A[4][1] = *(arr_delay_lte + 11); A[4][2] = *(arr_jet_lte + 11);
-		A[5][0] = *(arr_rss_fx + 11);  A[5][1] = *(arr_delay_fx + 11);  A[5][2] = *(arr_jet_fx + 11);
+		//double A[6][3] = { 0.0 };
+		double A[6][4] = { 0.0 };
+		A[0][0] = IN_DB(NON_DB(lte_rss)*pow(10.0, 12));  A[0][1] = maxdelay_lte; A[0][2] = maxjet_lte; A[0][3] = 1 - th_lte/50400000;
+		A[1][0] = IN_DB(NON_DB(fx_rss)*pow(10.0, 12));   A[1][1] = maxdelay_fx;  A[1][2] = maxjet_fx;  A[1][3] =1-th_fx / 165000000.00;
+		A[2][0] = IN_DB(NON_DB(*(arr_rss_lte + 10))*pow(10.0, 12)); A[2][1] = *(arr_delay_lte + 10); A[2][2] = *(arr_jet_lte + 10); A[2][3] =1  - (*(arr_thr_lte + 10))/ 50400000.00;
+		A[3][0] = IN_DB(NON_DB(*(arr_rss_fx + 10))*pow(10.0, 12));  A[3][1] = *(arr_delay_fx + 10);  A[3][2] = *(arr_jet_fx + 10);  A[3][3] = 1 -(*(arr_thr_fx + 10))/ 165000000.00;
+		A[4][0] = IN_DB(NON_DB(*(arr_rss_lte + 11))*pow(10.0, 12)); A[4][1] = *(arr_delay_lte + 11); A[4][2] = *(arr_jet_lte + 11); A[4][3] = 1  - (*(arr_thr_lte + 11))/50400000.00;
+		A[5][0] = IN_DB(NON_DB(*(arr_rss_fx + 11))*pow(10.0, 12));  A[5][1] = *(arr_delay_fx + 11);  A[5][2] = *(arr_jet_fx + 11);  A[5][3] = 1 -(*(arr_thr_fx + 11))/ 165000000.00;
 
 		//初始化增量矩阵B
-		double B[4][3] = { 0.0 };
-		B[0][0] = (A[2][0] - A[0][0]) / fabs(A[0][0]); B[0][1] = (A[2][1] - A[0][1]) / fabs(A[0][1]); B[0][2] = (A[2][2] - A[0][2]) / fabs(A[0][2]);
- 		B[1][0] = (A[3][0] - A[1][0]) / fabs(A[1][0]); B[1][1] = (A[3][1] - A[1][1]) / fabs(A[1][1]); B[1][2] = (A[3][2] - A[1][2]) / fabs(A[1][2]);
-		B[2][0] = (A[4][0] - A[2][0]) / fabs(A[2][0]); B[2][1] = (A[4][1] - A[2][1]) / fabs(A[2][1]); B[2][2] = (A[4][2] - A[2][2]) / fabs(A[2][2]);
-		B[3][0] = (A[5][0] - A[3][0]) / fabs(A[3][0]); B[3][1] = (A[5][1] - A[3][1]) / fabs(A[3][1]); B[3][2] = (A[5][2] - A[3][2]) / fabs(A[3][2]);
+		//double B[4][3] = { 0.0 };
+		double B[4][4] = { 0.0 };
+		if (A[0][0] == 0) {
+			B[0][0] = A[2][0] - A[0][0];
+			//B[0][0] = 0;
+		}
+		else {
+			B[0][0] = (A[2][0] - A[0][0]) / fabs(A[0][0]);
+		}
+		if (A[0][1] == 0) {
+			B[0][1] = A[2][1] - A[0][1];
+			//B[0][1] = 0;
+		}
+		else {
+			B[0][1] = (A[2][1] - A[0][1]) / fabs(A[0][1]);
+		}
+		if (A[0][2] == 0) {
+			B[0][2] = A[2][2] - A[0][2];
+			//B[0][2] = 0;
+		}
+		else {
+			B[0][2] = (A[2][2] - A[0][2]) / fabs(A[0][2]);
+		}
+		if (A[0][3] == 0) {
+			B[0][3] = A[2][3] - A[0][3];
+			//B[0][3] = 0;
+		}
+		else {
+			B[0][3] = (A[2][3] - A[0][3]) / fabs(A[0][3]);
+		}
+
+		if (A[1][0] == 0) {
+			B[1][0] = A[3][0] - A[1][0];
+			//B[1][0] = 0;
+		}
+		else {
+			B[1][0] = (A[3][0] - A[1][0]) / fabs(A[1][0]);
+		}
+		if (A[1][1] == 0) {
+			B[1][1] = A[3][1] - A[1][1];
+			//B[1][1] = 0;
+		}
+		else {
+			B[1][1] = (A[3][1] - A[1][1]) / fabs(A[1][1]);
+		}
+		if (A[1][2] == 0) {
+			B[1][2] = A[3][2] - A[1][2];
+			//B[1][2] = 0;
+		}
+		else {
+			B[1][2] = (A[3][2] - A[1][2]) / fabs(A[1][2]);
+		}
+		if (A[1][3] == 0) {
+			B[1][3] = A[3][3] - A[1][3];
+			//B[1][3] = 0;
+		}
+		else {
+			B[1][3] = (A[3][3] - A[1][3]) / fabs(A[1][3]);
+		}
+
+		if (A[2][0] == 0) {
+			B[2][0] = A[4][0] - A[2][0];
+			//B[2][0] = 0;
+		}
+		else {
+			B[2][0] = (A[4][0] - A[2][0]) / fabs(A[2][0]);
+		}
+		if (A[2][1] == 0) {
+			B[2][1] = A[4][1] - A[2][1];
+			//B[2][1] = 0;
+		}
+		else {
+			B[2][1] = (A[4][1] - A[2][1]) / fabs(A[2][1]);
+		}
+		if (A[2][2] == 0) {
+			B[2][2] = A[4][2] - A[2][2];
+			//B[2][2] = 0;
+		}
+		else {
+			B[2][2] = (A[4][2] - A[2][2]) / fabs(A[2][2]);
+		}
+		if (A[2][3] == 0) {
+			B[2][3] = A[4][3] - A[2][3];
+			//B[2][3] = 0;
+		}
+		else {
+			B[2][3] = (A[4][3] - A[2][3]) / fabs(A[2][3]);
+		}
+
+		if (A[3][0] == 0) {
+			B[3][0] = A[5][0] - A[3][0];
+			//B[3][0] = 0;
+		}
+		else {
+			B[3][0] = (A[5][0] - A[3][0]) / fabs(A[3][0]);
+		}
+		if (A[3][1] == 0) {
+			B[3][1] = A[5][1] - A[3][1];
+			//B[3][1] = 0;
+		}
+		else {
+			B[3][1] = (A[5][1] - A[3][1]) / fabs(A[3][1]);
+		}
+		if (A[3][2] == 0) {
+			B[3][2] = A[5][2] - A[3][2];
+			//B[3][2] = 0;
+		}
+		else {
+			B[3][2] = (A[5][2] - A[3][2]) / fabs(A[3][2]);
+		}
+		if (A[3][3] == 0) {
+			//B[3][3] = A[5][3] - A[3][3];
+			//B[3][3] = 0;
+		}
+		else {
+			B[3][3] = (A[5][3] - A[3][3]) / fabs(A[3][3]);
+		}
+		/*B[0][0] = (A[2][0] - A[0][0]) / fabs(A[0][0]); B[0][1] = (A[2][1] - A[0][1]) / fabs(A[0][1]); B[0][2] = (A[2][2] - A[0][2]) / fabs(A[0][2]); B[0][3] = (A[2][3] - A[0][3]) / fabs(A[0][3]);
+		B[1][0] = (A[3][0] - A[1][0]) / fabs(A[1][0]); B[1][1] = (A[3][1] - A[1][1]) / fabs(A[1][1]); B[1][2] = (A[3][2] - A[1][2]) / fabs(A[1][2]); B[1][3] = (A[3][3] - A[1][3]) / fabs(A[1][3]);
+		B[2][0] = (A[4][0] - A[2][0]) / fabs(A[2][0]); B[2][1] = (A[4][1] - A[2][1]) / fabs(A[2][1]); B[2][2] = (A[4][2] - A[2][2]) / fabs(A[2][2]); B[2][3] = (A[4][3] - A[2][3]) / fabs(A[2][3]);
+		B[3][0] = (A[5][0] - A[3][0]) / fabs(A[3][0]); B[3][1] = (A[5][1] - A[3][1]) / fabs(A[3][1]); B[3][2] = (A[5][2] - A[3][2]) / fabs(A[3][2]); B[3][3] = (A[5][3] - A[3][3]) / fabs(A[3][3]);*/
+		/*B[0][0] = (A[2][0] - A[0][0]) ; B[0][1] = (A[2][1] - A[0][1]); B[0][2] = (A[2][2] - A[0][2]) ; B[0][3] = (A[2][3] - A[0][3]) ;
+		B[1][0] = (A[3][0] - A[1][0]) ; B[1][1] = (A[3][1] - A[1][1]); B[1][2] = (A[3][2] - A[1][2]) ; B[1][3] = (A[3][3] - A[1][3]) ;
+		B[2][0] = (A[4][0] - A[2][0]) ; B[2][1] = (A[4][1] - A[2][1]); B[2][2] = (A[4][2] - A[2][2]) ; B[2][3] = (A[4][3] - A[2][3]) ;
+		B[3][0] = (A[5][0] - A[3][0]) ; B[3][1] = (A[5][1] - A[3][1]); B[3][2] = (A[5][2] - A[3][2]) ; B[3][3] = (A[5][3] - A[3][3]) ;*/
 
 		//0-1 矩阵A
-		double A1[6][3] = { 0.0 };
-		/*if (A[0][0] > A[1][0]) { 
-			A1[0][0] = 1; A1[1][0] = 0;
-		}
-		else {
-			A1[0][0] = 0; A1[1][0] = 1;
-		}
-		if (A[0][1] > A[1][1]) {
-			A1[0][1] = 0; A1[1][1] = 1;
-		}
-		else {
-			A1[0][1] = 1; A1[1][1] = 0; 
-		}
-		if (A[0][2] > A[1][2]) {
-			A1[0][2] = 0; A1[1][2] = 1;
-		}
-		else {
-			A1[0][2] = 1; A1[1][2] = 0;
-		}
+		//double A1[6][3] = { 0.0 };
+		double A1[6][4] = { 0.0 };
+		//if (A[0][0] > A[1][0]) { 
+		//	A1[0][0] = 1; A1[1][0] = 0;
+		//}
+		//else {
+		//	A1[0][0] = 0; A1[1][0] = 1;
+		//}
+		//if (A[0][1] > A[1][1]) {
+		//	A1[0][1] = 0; A1[1][1] = 1;
+		//}
+		//else {
+		//	A1[0][1] = 1; A1[1][1] = 0; 
+		//}
+		//if (A[0][2] > A[1][2]) {
+		//	A1[0][2] = 0; A1[1][2] = 1;
+		//}
+		//else {
+		//	A1[0][2] = 1; A1[1][2] = 0;
+		//}
+		////add thr
+		//if (A[0][3] > A[1][3]) {
+		//	A1[0][3] = 1; A1[1][3] = 0;
+		//}
+		//else {
+		//	A1[0][3] = 0; A1[1][3] = 1;
+		//}
 
-		if (A[2][0] > A[3][0]) {
-			A1[2][0] = 1; A1[3][0] = 0;
-		}
-		else { 
-			A1[2][0] = 0; A1[3][0] = 1;
-		}
-		if (A[2][1] > A[3][1]) {
-			A1[2][1] = 0; A1[3][1] = 1;
-		}
-		else {
-			A1[2][1] = 1; A1[3][1] = 0;
-		}
-		if (A[2][2] > A[3][2]) {
-			A1[2][2] = 0; A1[3][2] = 1;
-		}
-		else {
-			A1[2][2] = 1; A1[3][2] = 0;
-		}
+		//if (A[2][0] > A[3][0]) {
+		//	A1[2][0] = 1; A1[3][0] = 0;
+		//}
+		//else { 
+		//	A1[2][0] = 0; A1[3][0] = 1;
+		//}
+		//if (A[2][1] > A[3][1]) {
+		//	A1[2][1] = 0; A1[3][1] = 1;
+		//}
+		//else {
+		//	A1[2][1] = 1; A1[3][1] = 0;
+		//}
+		//if (A[2][2] > A[3][2]) {
+		//	A1[2][2] = 0; A1[3][2] = 1;
+		//}
+		//else {
+		//	A1[2][2] = 1; A1[3][2] = 0;
+		//}
+		////add thr
+		//if (A[2][3] > A[3][3]) {
+		//	A1[2][3] = 1; A1[3][3] = 0;
+		//}   
+		//else {
+		//	A1[2][3] = 0; A1[3][3] = 1;
+		//}
 
-		if (A[4][0] > A[5][0]) {
-			A1[4][0] = 1; A1[5][0] = 0;
-		}
-		else { A1[4][0] = 0; A1[5][0] = 1; }
-		if (A[4][1] > A[5][1]) {
-			A1[4][1] = 0; A1[5][1] = 1;
-		}
-		else {
-			A1[4][1] = 1; A1[5][1] = 0;
-		}
-		if (A[4][2] > A[5][2]) {
-			A1[4][2] = 0; A1[5][2] = 1;
-		}
-		else {
-			A1[4][2] = 1; A1[5][2] = 0;
-		}*/
-		A1[0][0] = A[0][0] / (A[0][0] + A[1][0]);  A1[0][1] = A[0][1] / (A[0][1] + A[1][1]); A1[0][2] = A[0][2] / (A[0][2] + A[1][2]);
-		A1[1][0] = A[1][0] / (A[0][0] + A[1][0]);  A1[1][1] = A[1][1] / (A[1][1] + A[1][1]); A1[1][2] = A[1][2] / (A[0][2] + A[1][2]);
-		A1[2][0] = A[2][0] / (A[2][0] + A[3][0]);  A1[2][1] = A[2][1] / (A[2][1] + A[3][1]); A1[2][2] = A[2][2] / (A[2][2] + A[3][2]);
-		A1[3][0] = A[3][0] / (A[2][0] + A[3][0]);  A1[3][1] = A[3][1] / (A[2][1] + A[3][1]); A1[3][2] = A[3][2] / (A[2][2] + A[3][2]);
-		A1[4][0] = A[4][0] / (A[4][0] + A[5][0]);  A1[4][1] = A[4][1] / (A[4][1] + A[5][1]); A1[4][2] = A[4][2] / (A[4][2] + A[5][2]);
-		A1[5][0] = A[5][0] / (A[4][0] + A[5][0]);  A1[5][1] = A[5][1] / (A[4][1] + A[5][1]); A1[5][2] = A[5][2] / (A[4][2] + A[5][2]);
+
+		//if (A[4][0] > A[5][0]) {
+		//	A1[4][0] = 1; A1[5][0] = 0;
+		//}
+		//else { A1[4][0] = 0; A1[5][0] = 1; }
+		//if (A[4][1] > A[5][1]) {
+		//	A1[4][1] = 0; A1[5][1] = 1;
+		//}
+		//else {
+		//	A1[4][1] = 1; A1[5][1] = 0;
+		//}
+		//if (A[4][2] > A[5][2]) {
+		//	A1[4][2] = 0; A1[5][2] = 1;
+		//}
+		//else {
+		//	A1[4][2] = 1; A1[5][2] = 0;
+		//}
+		////add thr
+		//if (A[4][3] > A[5][3]) {
+		//	A1[4][3] = 1; A1[5][3] = 0;
+		//}
+		//else {
+		//	A1[4][3] = 0; A1[5][3] = 1;
+		//}
+		//A1[0][0] = A[0][0] / (fabs(A[0][0]) + fabs(A[1][0]));  A1[0][1] = A[0][1] / (fabs(A[0][1]) + fabs(A[1][1])); A1[0][2] = A[0][2] / (fabs(A[0][2]) + fabs(A[1][2])); A1[0][3] = A[0][3] / (fabs(A[0][3]) + fabs(A[1][3]));
+		//A1[1][0] = A[1][0] / (fabs(A[0][0]) + fabs(A[1][0]));  A1[1][1] = A[1][1] / (fabs(A[1][1]) + fabs(A[1][1])); A1[1][2] = A[1][2] / (fabs(A[0][2]) + fabs(A[1][2])); A1[1][3] = A[1][3] / (fabs(A[0][3]) + fabs(A[1][3]));
+		//A1[2][0] = A[2][0] / (fabs(A[2][0]) + fabs(A[3][0]));  A1[2][1] = A[2][1] / (fabs(A[2][1]) + fabs(A[3][1])); A1[2][2] = A[2][2] / (fabs(A[2][2]) + fabs(A[3][2])); A1[2][3] = A[2][3] / (fabs(A[2][3]) + fabs(A[3][3]));
+		//A1[3][0] = A[3][0] / (fabs(A[2][0]) + fabs(A[3][0]));  A1[3][1] = A[3][1] / (fabs(A[2][1]) + fabs(A[3][1])); A1[3][2] = A[3][2] / (fabs(A[2][2]) + fabs(A[3][2])); A1[3][3] = A[3][3] / (fabs(A[2][3]) + fabs(A[3][3]));
+		//A1[4][0] = A[4][0] / (fabs(A[4][0]) + fabs(A[5][0]));  A1[4][1] = A[4][1] / (fabs(A[4][1]) + fabs(A[5][1])); A1[4][2] = A[4][2] / (fabs(A[4][2]) + fabs(A[5][2])); A1[4][3] = A[4][3] / (fabs(A[4][3]) + fabs(A[5][3]));
+		//A1[5][0] = A[5][0] / (fabs(A[4][0]) + fabs(A[5][0]));  A1[5][1] = A[5][1] / (fabs(A[4][1]) + fabs(A[5][1])); A1[5][2] = A[5][2] / (fabs(A[4][2]) + fabs(A[5][2])); A1[5][3] = A[5][3] / (fabs(A[4][3]) + fabs(A[5][3]));
+
+		A1[0][0] = A[0][0] / (fabs(A[0][0]) + fabs(A[1][0]));  A1[0][1] = exp(-0.0139*A[0][1]); A1[0][2] = exp(-0.0277*A[0][2]); A1[0][3] = A[0][3] / (fabs(A[0][3]) + fabs(A[1][3]));
+		A1[1][0] = A[1][0] / (fabs(A[0][0]) + fabs(A[1][0]));  A1[1][1] = exp(-0.0139*A[1][1]); A1[1][2] = exp(-0.0277*A[1][2]); A1[1][3] = A[1][3] / (fabs(A[0][3]) + fabs(A[1][3]));
+		A1[2][0] = A[2][0] / (fabs(A[2][0]) + fabs(A[3][0]));  A1[2][1] = exp(-0.0139*A[2][1]); A1[2][2] = exp(-0.0277*A[2][2]); A1[2][3] = A[2][3] / (fabs(A[2][3]) + fabs(A[3][3]));
+		A1[3][0] = A[3][0] / (fabs(A[2][0]) + fabs(A[3][0]));  A1[3][1] = exp(-0.0139*A[3][1]); A1[3][2] = exp(-0.0277*A[3][2]); A1[3][3] = A[3][3] / (fabs(A[2][3]) + fabs(A[3][3]));
+		A1[4][0] = A[4][0] / (fabs(A[4][0]) + fabs(A[5][0]));  A1[4][1] = exp(-0.0139*A[4][1]); A1[4][2] = exp(-0.0277*A[4][2]); A1[4][3] = A[4][3] / (fabs(A[4][3]) + fabs(A[5][3]));
+		A1[5][0] = A[5][0] / (fabs(A[4][0]) + fabs(A[5][0]));  A1[5][1] = exp(-0.0139*A[5][1]); A1[5][2] = exp(-0.0277*A[5][2]); A1[5][3] = A[5][3] / (fabs(A[4][3]) + fabs(A[5][3]));
 
 		//0-1 矩阵B
-		double B1[4][3] = { 0.0 };
-		/*if (B[0][0] > B[1][0]) {
-			B1[0][0] = 1; B1[1][0] = 0;
-		}
-		else {
-			B1[0][0] = 0; B1[1][0] = 1;
-		}
-		if (B[0][1] > B[1][1]) {
-			B1[0][1] = 0; B1[1][1] = 1;
-		}
-		else {
-			B1[0][1] = 1; B1[1][1] = 0;
-		}
-		if (B[0][2] > B[1][2]) {
-			B1[0][2] = 0; B1[1][2] = 1;
-		}
-		else {
-			B1[0][2] = 1; B1[1][2] = 0;
-		}
+		//double B1[4][3] = { 0.0 };
+		double B1[4][4] = { 0.0 };
+		//if (B[0][0] > B[1][0]) {
+		//	B1[0][0] = 1; B1[1][0] = 0;
+		//}
+		//else {
+		//	B1[0][0] = 0; B1[1][0] = 1;
+		//}
+		//if (B[0][1] > B[1][1]) {
+		//	B1[0][1] = 0; B1[1][1] = 1;
+		//}
+		//else {
+		//	B1[0][1] = 1; B1[1][1] = 0;
+		//}
+		//if (B[0][2] > B[1][2]) {
+		//	B1[0][2] = 0; B1[1][2] = 1;
+		//}
+		//else {
+		//	B1[0][2] = 1; B1[1][2] = 0;
+		//}
+		////add thr
+		//if (B[0][3] > B[1][3]) {
+		//	B1[0][3] = 1; B1[1][3] = 0;
+		//}
+		//else {
+		//	B1[0][3] = 0; B1[1][3] = 1;
+		//}
 
-		if (B[2][0] > B[3][0]) {
-			B1[2][0] = 1; B1[3][0] = 0;
-		}
-		else {
-			B1[2][0] = 0; B1[3][0] = 1;
-		}
-		if (B[2][1] > B[3][1]) {
-			B1[2][1] = 0; B1[3][1] = 1;
-		}
-		else {
-			B1[2][1] = 1; B1[3][1] = 0;
-		}
-		if (B[2][2] > B[3][2]) {
-			B1[2][2] = 0; B1[3][2] = 1;
-		}
-		else {
-			B1[2][2] = 1; B1[3][2] = 0;
-		}*/
-		B1[0][0] = B[0][0] / (B[0][0] + B[1][0]);  B1[0][1] = B[0][1] / (B[0][1] + B[1][1]); B1[0][2] = B[0][2] / (B[0][2] + B[1][2]);
-		B1[1][0] = B[1][0] / (B[0][0] + B[1][0]);  B1[1][1] = B[1][1] / (B[1][1] + B[1][1]); B1[1][2] = B[1][2] / (B[0][2] + B[1][2]);
-		B1[2][0] = B[2][0] / (B[2][0] + B[3][0]);  B1[2][1] = B[2][1] / (B[2][1] + B[3][1]); B1[2][2] = B[2][2] / (B[2][2] + B[3][2]);
-		B1[3][0] = B[3][0] / (B[2][0] + B[3][0]);  B1[3][1] = B[3][1] / (B[2][1] + B[3][1]); B1[3][2] = B[3][2] / (B[2][2] + B[3][2]);
+		//if (B[2][0] > B[3][0]) {
+		//	B1[2][0] = 1; B1[3][0] = 0;
+		//}
+		//else {
+		//	B1[2][0] = 0; B1[3][0] = 1;
+		//}
+		//if (B[2][1] > B[3][1]) {
+		//	B1[2][1] = 0; B1[3][1] = 1;
+		//}
+		//else {
+		//	B1[2][1] = 1; B1[3][1] = 0;
+		//}
+		//if (B[2][2] > B[3][2]) {
+		//	B1[2][2] = 0; B1[3][2] = 1;
+		//}
+		//else {
+		//	B1[2][2] = 1; B1[3][2] = 0;
+		//}
+		////add thr
+		//if (B[2][3] > B[3][3]) {
+		//	B1[2][3] = 1; B1[3][3] = 0;
+		//}
+		//else {
+		//	B1[2][3] = 0; B1[3][3] = 1;
+		//}
+		/*B1[0][0] = B[0][0] / (fabs(B[0][0]) + fabs(B[1][0]));  B1[0][1] = B[0][1] / (fabs(B[0][1]) + fabs(B[1][1])); B1[0][2] = B[0][2] / (fabs(B[0][2]) + fabs(B[1][2])); B1[0][3] = B[0][3] / (fabs(B[0][3]) + fabs(B[1][3]));
+		B1[1][0] = B[1][0] / (fabs(B[0][0]) + fabs(B[1][0]));  B1[1][1] = B[1][1] / (fabs(B[1][1]) + fabs(B[1][1])); B1[1][2] = B[1][2] / (fabs(B[0][2]) + fabs(B[1][2])); B1[1][3] = B[1][3] / (fabs(B[0][3]) + fabs(B[1][3]));
+		B1[2][0] = B[2][0] / (fabs(B[2][0]) + fabs(B[3][0]));  B1[2][1] = B[2][1] / (fabs(B[2][1]) + fabs(B[3][1])); B1[2][2] = B[2][2] / (fabs(B[2][2]) + fabs(B[3][2])); B1[2][3] = B[2][3] / (fabs(B[2][3]) + fabs(B[3][3]));
+		B1[3][0] = B[3][0] / (fabs(B[2][0]) + fabs(B[3][0]));  B1[3][1] = B[3][1] / (fabs(B[2][1]) + fabs(B[3][1])); B1[3][2] = B[3][2] / (fabs(B[2][2]) + fabs(B[3][2])); B1[3][3] = B[3][3] / (fabs(B[2][3]) + fabs(B[3][3]));*/
+
+		B1[0][0] = B[0][0] / (fabs(B[0][0]) + fabs(B[1][0]));  B1[0][1] = exp(-0.0139*B[0][1]); B1[0][2] = exp(-0.0277*B[0][2]); B1[0][3] = B[0][3] / (fabs(B[0][3]) + fabs(B[1][3]));
+		B1[1][0] = B[1][0] / (fabs(B[0][0]) + fabs(B[1][0]));  B1[1][1] = exp(-0.0139*B[1][1]); B1[1][2] = exp(-0.0277*B[1][2]); B1[1][3] = B[1][3] / (fabs(B[0][3]) + fabs(B[1][3]));
+		B1[2][0] = B[2][0] / (fabs(B[2][0]) + fabs(B[3][0]));  B1[2][1] = exp(-0.0139*B[2][1]); B1[2][2] = exp(-0.0277*B[2][2]); B1[2][3] = B[2][3] / (fabs(B[2][3]) + fabs(B[3][3]));
+		B1[3][0] = B[3][0] / (fabs(B[2][0]) + fabs(B[3][0]));  B1[3][1] = exp(-0.0139*B[3][1]); B1[3][2] = exp(-0.0277*B[3][2]); B1[3][3] = B[3][3] / (fabs(B[2][3]) + fabs(B[3][3]));
 
 		//将规范化的决策矩阵和增量矩阵按网络拆分
-		double A_lte[3][3] = { { A1[0][0],A1[0][1],A1[0][2] },{ A1[2][0],A1[2][1],A1[2][2] } ,{ A1[4][0],A1[4][1],A1[4][2] } };
+		/*double A_lte[3][3] = { { A1[0][0],A1[0][1],A1[0][2] },{ A1[2][0],A1[2][1],A1[2][2] } ,{ A1[4][0],A1[4][1],A1[4][2] } };
 		double A_fx[3][3] = { { A1[1][0],A1[1][1],A1[1][2] },{ A1[3][0],A1[3][1],A1[3][2] } ,{ A1[5][0],A1[5][1],A1[5][2] } };
 		double B_lte[2][3] = { { B1[0][0],B1[0][1],B1[0][2] },{ B1[2][0],B1[2][1],B1[2][2] } };
-		double B_fx[2][3] = { { B1[1][0],B1[1][1],B1[1][2] },{ B1[3][0],B1[3][1],B1[3][2] } };
+		double B_fx[2][3] = { { B1[1][0],B1[1][1],B1[1][2] },{ B1[3][0],B1[3][1],B1[3][2] } };*/
+		double A_lte[3][4] = { { A1[0][0],A1[0][1],A1[0][2],A1[0][3] },{ A1[2][0],A1[2][1],A1[2][2],A1[2][3] } ,{ A1[4][0],A1[4][1],A1[4][2],A1[4][3] } };
+		double A_fx[3][4] = { { A1[1][0],A1[1][1],A1[1][2],A1[1][3] },{ A1[3][0],A1[3][1],A1[3][2],A1[3][3] } ,{ A1[5][0],A1[5][1],A1[5][2],A1[5][3] } };
+		double B_lte[2][4] = { { B1[0][0],B1[0][1],B1[0][2],B1[0][3] },{ B1[2][0],B1[2][1],B1[2][2],B1[2][3] } };
+		double B_fx[2][4] = { { B1[1][0],B1[1][1],B1[1][2],B1[1][3] },{ B1[3][0],B1[3][1],B1[3][2],B1[3][3] } };
 		//获取时间权重、属性权重、决策矩阵和增量矩阵权重
-		double v_A[1][3] = { 0.5000 ,0.3333,0.1667 };  double v_B[1][3] = { 0.6667,0.3333 };
-		double w_A1[1][3]  = { 0.0629,0.6716,0.2654 };  //会话类    
-		double w_A2[1][3] = { 0.1047,0.2583,0.6370 }; //流类
-		double w_A3[1][3] = { 0.6942,0.2103,0.0955 }; //交互类
-		double w_A4[1][3] = { 0.8182,0.0909,0.0909 }; //背景类
+		double v_A[1][3] = { 0.5000 ,0.3333,0.1667 };  double v_B[1][2] = { 0.6667,0.3333};
+
+		//double w_A1[1][3]  = { 0.0629,0.6716,0.2654 };  //会话类    
+		//double w_A2[1][3] = { 0.1047,0.2583,0.6370 }; //流类
+		//double w_A3[1][3] = { 0.6942,0.2103,0.0955 }; //交互类
+		//double w_A4[1][3] = { 0.8182,0.0909,0.0909 }; //背景类
+		//double w_A1[1][4] = { 0.0665,0.5883,0.2574,0.0878 };  //会话类    
+		//double w_A2[1][4] = { 0.0562,0.1239,0.3559,0.4640 }; //流类
+		//double w_A3[1][4] = { 0.2698,0.0862,0.0535,0.5905 }; //交互类
+		//double w_A4[1][4] = { 0.3279,0.0467,0.0467,0.5786 }; //背景类
+
+		double w_A1[1][4] = { 0.5,0.3358,0.1327,0.03145 };  //会话类    
+		double w_A2[1][4] = { 0.5,0.05475,0.2908,0.1545 }; //流类
+		double w_A3[1][4] = { 0.5,0.0744,0.0329,0.3927 }; //交互类
+		double w_A4[1][4] = { 0.5,0.04545,0.04545,0.4091 }; //背景类
 		
 		double **M_lte; double **D_lte;
 		double **M_fx;  double **D_fx;
-		double m_lte[3][1] = { 0.0 }; double d_lte[3][1] = { 0.0 };
+		/*double m_lte[3][1] = { 0.0 }; double d_lte[3][1] = { 0.0 };
 		double m_fx[3][1]  = { 0.0 }; double d_fx[3][1] = { 0.0 };
 		M_lte = Matrix_tran(multiply(v_A, A_lte, 1, 3, 3));
 		D_lte = Matrix_tran(multiply(v_B, B_lte, 1, 3, 2));
@@ -12979,40 +13284,59 @@ static BOOL XdRealTimeSAWDecision(){
 			m_lte[i][0] = M_lte[i][0];
 			d_lte[i][0] = D_lte[i][0];
 			m_fx[i][0] = M_fx[i][0];
+			d_fx[i][0] = D_fx[i][0];*/
+		double m_lte[4][1] = { 0.0 }; double d_lte[4][1] = { 0.0 };
+		double m_fx[4][1] = { 0.0 }; double d_fx[4][1] = { 0.0 };
+
+		M_lte = Matrix_tran(multiply(v_A, A_lte, 1, 4, 3));
+		D_lte = Matrix_tran(multiply(v_B, B_lte, 1, 4, 2));
+		M_fx = Matrix_tran(multiply(v_A, A_fx, 1, 4, 3));
+		D_fx = Matrix_tran(multiply(v_B, B_fx, 1, 4, 2));
+		for (int i = 0; i < 4; i++) {
+			m_lte[i][0] = M_lte[i][0];
+			d_lte[i][0] = D_lte[i][0];
+			m_fx[i][0] = M_fx[i][0];
 			d_fx[i][0] = D_fx[i][0];
 		}
 		if (strcmp(servicetype, "VBR") == 0) {
-			Score_lte = 0.5*multiply1(w_A2, m_lte, 3) + 0.5*multiply1(w_A2, d_lte, 3);
-			Score_fx = 0.5*multiply1(w_A2, m_fx, 3) + 0.5*multiply1(w_A2, d_fx, 3);
+			Score_lte = 0.67*multiply1(w_A2, m_lte, 3) + 0.33*multiply1(w_A2, d_lte, 3);
+			Score_fx = 0.67*multiply1(w_A2, m_fx, 3) + 0.33*multiply1(w_A2, d_fx, 3);
 		}
-		else if (strcmp(servicetype,"CBR")==0) {	
+		else if (strcmp(servicetype,"CBR")==0 && session == 9) {	
 			double t1 = multiply1(w_A3, m_lte, 3);
 			double t2 = multiply1(w_A3, d_lte, 3);
 			double t3 = multiply1(w_A3, m_fx, 3);
 			double t4 = multiply1(w_A3, d_fx, 3);
 
-			Score_lte = 0.5*multiply1(w_A3, m_lte, 3) + 0.5*multiply1(w_A3,d_lte,3);
-			Score_fx  = 0.5*multiply1(w_A3, m_fx, 3) + 0.5*multiply1(w_A3, d_fx, 3);
-			ofstream outfilea;
-			outfilea.open("r.csv", ios::app | ios::out);
-			outfilea << Score_lte << "," << Score_fx << endl;
-			outfilea.close();
+			Score_lte = 0.67*multiply1(w_A3, m_lte, 3) + 0.33*multiply1(w_A3,d_lte,3);
+			Score_fx  = 0.67*multiply1(w_A3, m_fx, 3) + 0.33*multiply1(w_A3, d_fx, 3);
 		}
-		else if (strcmp(servicetype, "FTP_GEN") == 0) {
-			Score_lte = 0.5*multiply1(w_A4, m_lte, 3) + 0.5*multiply1(w_A4, d_lte, 3);
-			Score_fx = 0.5*multiply1(w_A4, m_fx, 3) + 0.5*multiply1(w_A4, d_fx, 3);
+		else if (strcmp(servicetype, "TRAFFIC_GEN") == 0) {
+			Score_lte = 0.67*multiply1(w_A4, m_lte, 3) + 0.33*multiply1(w_A4, d_lte, 3);
+			Score_fx = 0.67*multiply1(w_A4, m_fx, 3) + 0.33*multiply1(w_A4, d_fx, 3);
 		}
-	}	
-	
-	if ((Score_fx - Score_lte) > 0.1) {
-		return TRUE;
+		else if (session == 8) {
+			Score_lte = 0.67*multiply1(w_A1, m_lte, 3) + 0.33*multiply1(w_A1, d_lte, 3);
+			Score_fx = 0.67*multiply1(w_A1, m_fx, 3) + 0.33*multiply1(w_A1, d_fx, 3);
+		}
 	}
-	return FALSE;
+	else {
+		return Temp_metrics::flag_rsaw;
+	}
+	
+	if (Score_fx > Score_lte  ) {
+		Temp_metrics::flag_rsaw = TRUE;
+		return Temp_metrics::flag_rsaw;
+	}
+	else {
+		Temp_metrics::flag_rsaw = FALSE;
+		return Temp_metrics::flag_rsaw;
+	}
 }
 //M:输出矩阵的行数
 //N:输出矩阵的列数
 //K:一个乘数矩阵的列数，也是另一个乘数矩阵的行数，比如1*3 3*2   M= 1 N= 2 K=3
-static double** multiply(double A[][3], double B[][3],int M,int N,int K) {  
+static double** multiply(double A[][3], double B[][4],int M,int N,int K) {  
 	double **C = new double*[M];
 	for (int i = 0; i < M; i++)
 		C[i] = new double[N];
@@ -13025,7 +13349,25 @@ static double** multiply(double A[][3], double B[][3],int M,int N,int K) {
 	return C;
 };
 
-static double multiply1(double A[1][3], double B[][1], int L) {
+//M:输出矩阵的行数
+//N:输出矩阵的列数
+//K:一个乘数矩阵的列数，也是另一个乘数矩阵的行数，比如1*3 3*2   M= 1 N= 2 K=3
+static double** multiply(double A[][2], double B[][4], int M, int N, int K) {
+	double **C = new double*[M];
+	for (int i = 0; i < M; i++)
+		C[i] = new double[N];
+	for (int m = 0; m < M; m++) {
+		for (int n = 0; n < N; n++) {
+			C[m][n] = 0;
+			for (int k = 0; k < K; k++) {
+				C[m][n] += A[m][k] * B[k][n];
+			}
+		}
+	}
+	return C;
+};
+
+static double multiply1(double A[1][4], double B[][1], int L) {
 	double C = 0.0;
 	for (int i = 0; i < L; i++){
 		C += A[0][i] * B[i][0];
@@ -13033,12 +13375,12 @@ static double multiply1(double A[1][3], double B[][1], int L) {
 	return C;
 };
 static double** Matrix_tran(double **A) {
-	double **B = new double*[3];
-	for (int i = 0; i < 3; i++)
+	double **B = new double*[4];
+	for (int i = 0; i < 4; i++)
 		B[i] = new double[1];
 	for (int i = 0; i < 1; i++)
 	{
-		for (int j = 0; j < 3; j++)
+		for (int j = 0; j < 4; j++)
 			B[j][i]= A[i][j] ;
 	}
 	return B;

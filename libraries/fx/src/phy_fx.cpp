@@ -998,9 +998,9 @@ void PhySphySignalArrivalFromChannel(
 			Temp_fx_rxpower::FXRSS[node->nodeId - 1][1] = rxPowerInOmnidBm;
 			Temp_fx_rxpower::temp_time[node->nodeId - 1][1] = getSimTime(node);
 			double time = getSimTime(node) / SECOND;
-			ofstream outfile("FX_RSS.txt", ofstream::app);
+			/*ofstream outfile("FX_RSS.txt", ofstream::app);
 			outfile  << rxPowerInOmnidBm << endl;
-			outfile.close();
+			outfile.close();*/
 		}
 	}
 		
